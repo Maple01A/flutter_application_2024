@@ -55,6 +55,20 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     }
   }
 
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+    );
+    if (picked != null && picked != DateTime.now()) {
+      setState(() {
+        _dateController.text = "${picked.toLocal()}".split(' ')[0];
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -63,55 +77,85 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: InputDecoration(labelText: '名前'),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '名前を入力してください';
-                  }
-                  return null;
-                },
+        child: Column(
+          children: [
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  children: [
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: InputDecoration(labelText: '名前'),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return '名前を入力してください';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: _descriptionController,
+                      decoration: InputDecoration(labelText: '説明'),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return '説明を入力してください';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: _dateController,
+                      decoration: InputDecoration(labelText: '日付'),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return '日付を入力してください';
+                        }
+                        return null;
+                      },
+                      onTap: () async {
+                        FocusScope.of(context).requestFocus(new FocusNode());
+                        await _selectDate(context);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    _image == null
+                        ? Text('画像を選択してください')
+                        : Image.file(_image!, height: 200),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24.0),
+                      child: SizedBox(
+                        width: 200, // ボタンの幅を変更
+                        child: ElevatedButton(
+                          onPressed: _pickImage,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text('画像を選択'),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              TextFormField(
-                controller: _descriptionController,
-                decoration: InputDecoration(labelText: '説明'),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '説明を入力してください';
-                  }
-                  return null;
-                },
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                child: SizedBox(
+                  width: double.infinity, // ボタンの幅を画面いっぱいに変更
+                  child: ElevatedButton(
+                    onPressed: _uploadPlant,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text('追加'),
+                    ),
+                  ),
+                ),
               ),
-              TextFormField(
-                controller: _dateController,
-                decoration: InputDecoration(labelText: '日付'),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '日付を入力してください';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              _image == null
-                  ? Text('画像を選択してください')
-                  : Image.file(_image!, height: 200),
-              ElevatedButton(
-                onPressed: _pickImage,
-                child: Text('画像を選択'),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _uploadPlant,
-                child: Text('追加'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

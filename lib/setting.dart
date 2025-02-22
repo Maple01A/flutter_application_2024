@@ -3,15 +3,17 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 class Setting extends StatefulWidget {
   final Function(Color) onThemeColorChanged;
+  final Function(int) onCrossAxisCountChanged;
 
-  Setting({required this.onThemeColorChanged});
+  Setting({required this.onThemeColorChanged, required this.onCrossAxisCountChanged});
 
   @override
   _Setting createState() => _Setting();
 }
 
 class _Setting extends State<Setting> {
-  Color _selectedColor = Colors.greenAccent;
+  Color _selectedColor = Colors.lightBlueAccent;
+  int _crossAxisCount = 2;
 
   @override
   Widget build(BuildContext context) {
@@ -55,25 +57,24 @@ class _Setting extends State<Setting> {
             },
           ),
           ListTile(
-            leading: Icon(Icons.person),
-            title: Text('プロフィール'),
-            onTap: () {
-              // プロフィール設定画面へのナビゲーション
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.notifications),
-            title: Text('通知設定'),
-            onTap: () {
-              // 通知設定画面へのナビゲーション
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.lock),
-            title: Text('プライバシー設定'),
-            onTap: () {
-              // プライバシー設定画面へのナビゲーション
-            },
+            title: const Text('グリッド列数を選択'),
+            trailing: DropdownButton<int>(
+              value: _crossAxisCount,
+              items: [2, 3, 4].map((int value) {
+                return DropdownMenuItem<int>(
+                  value: value,
+                  child: Text(value.toString()),
+                );
+              }).toList(),
+              onChanged: (int? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _crossAxisCount = newValue;
+                  });
+                  widget.onCrossAxisCountChanged(newValue);
+                }
+              },
+            ),
           ),
           ListTile(
             leading: Icon(Icons.help),

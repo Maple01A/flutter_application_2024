@@ -2,12 +2,12 @@ import 'package:flutter/material.dart'; //flutterのインターフェース
 import 'package:firebase_core/firebase_core.dart'; //firebaseの初期化
 import 'package:cloud_firestore/cloud_firestore.dart'; //firestoreの操作
 import 'package:firebase_storage/firebase_storage.dart'; //firebase storageの連携
-//import 'package:firebase_ml_model_downloader/firebase_ml_model_downloader.dart';
-//import 'package:firebase_ml_vision/firebase_ml_vision.dart';
-import 'package:flutter_application_2024/add.dart'; 
+import 'package:flutter_application_2024/add.dart';
 import 'package:flutter_application_2024/login.dart';
 import 'package:flutter_application_2024/setting.dart';
 import 'package:flutter_application_2024/info.dart';
+import 'package:flutter_application_2024/detail.dart';
+import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 void main() async {
@@ -25,11 +25,18 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  Color _themeColor = Colors.greenAccent;
+  Color _themeColor = Colors.lightBlueAccent;
+  int _crossAxisCount = 2;
 
   void _changeThemeColor(Color color) {
     setState(() {
       _themeColor = color;
+    });
+  }
+
+  void _changeCrossAxisCount(int count) {
+    setState(() {
+      _crossAxisCount = count;
     });
   }
 
@@ -46,21 +53,30 @@ class _MyAppState extends State<MyApp> {
       initialRoute: '/login', // ログイン画面を最初に表示
       routes: {
         '/login': (context) => LoginScreen(),
-        '/home': (context) => PlantListScreen(),
-        '/setting': (context) => Setting(onThemeColorChanged: _changeThemeColor),
+        '/home': (context) => PlantListScreen(crossAxisCount: _crossAxisCount),
+        '/setting': (context) => Setting(
+          onThemeColorChanged: _changeThemeColor,
+          onCrossAxisCountChanged: _changeCrossAxisCount,
+        ),
         '/info': (context) => Info(),
+        '/favorite': (context) => FavoriteScreen(), // 修正
       },
     );
   }
 }
 
 class PlantListScreen extends StatefulWidget {
+  final int crossAxisCount;
+
+  PlantListScreen({required this.crossAxisCount});
+
   @override
   _PlantListScreenState createState() => _PlantListScreenState();
 }
 
 class _PlantListScreenState extends State<PlantListScreen> {
   List plants = [];
+  List favoritePlants = []; // お気に入りリスト
 
   void _navigateAddPlant() async {
     final result = await Navigator.push(
@@ -73,6 +89,16 @@ class _PlantListScreenState extends State<PlantListScreen> {
         plants.add(result);
       });
     }
+  }
+
+  void _toggleFavorite(Map plant) {
+    setState(() {
+      if (favoritePlants.contains(plant)) {
+        favoritePlants.remove(plant);
+      } else {
+        favoritePlants.add(plant);
+      }
+    });
   }
 
   @override
@@ -120,22 +146,8 @@ class _PlantListScreenState extends State<PlantListScreen> {
     }
   }
 
-  Future<void> _deletePlant(String id, int index) async {
-    try {
-      // Firestoreからデータを削除
-      await FirebaseFirestore.instance.collection('plants').doc(id).delete();
-
-      // ローカルのリストからも削除
-      setState(() {
-        plants.removeAt(index);
-      });
-    } catch (e) {
-      print('Error deleting plant: $e');
-    }
-  }
-
-  final menuList = ['ホーム', '設定', 'お問い合わせ'];
-  final menuList1 = ['名前', 'レベル', 'お気に入り'];
+  final menuList = ['ホーム', 'お気に入り', '設定'];
+  final menuList1 = ['名前', 'お問い合わせ'];
 
   @override
   Widget build(BuildContext context) {
@@ -164,11 +176,13 @@ class _PlantListScreenState extends State<PlantListScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : GridView.builder(
                     itemCount: plants.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: widget.crossAxisCount,
+                      childAspectRatio: widget.crossAxisCount == 1 ? 2 : 1,
                     ),
                     itemBuilder: (context, index) {
                       final plant = plants[index];
+                      final isFavorite = favoritePlants.contains(plant);
                       return Padding(
                         padding: const EdgeInsets.all(8.0),
                         child: GestureDetector(
@@ -189,32 +203,30 @@ class _PlantListScreenState extends State<PlantListScreen> {
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: <Widget>[
                                 Padding(
-                                  padding: const EdgeInsets.all(8.0),
+                                  padding: const EdgeInsets.all(12.0),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(15),
                                     child: Image.network(
                                       plant['images'],
-                                      height: 100,
+                                      height: widget.crossAxisCount == 1 ? 200 : 120,
                                       fit: BoxFit.cover,
                                     ),
                                   ),
                                 ),
                                 Padding(
-                                  padding: const EdgeInsets.all(7),
-                                  child: Text(
-                                    plant['name'],
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  padding: const EdgeInsets.all(1.0),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        plant['name'],
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.delete),
-                                  onPressed: () {
-                                    _deletePlant(plant['id'], index);
-                                  },
                                 ),
                               ],
                             ),
@@ -230,28 +242,42 @@ class _PlantListScreenState extends State<PlantListScreen> {
         onPressed: _navigateAddPlant,
         child: const Icon(Icons.add),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: menuList.map((title) {
-          return BottomNavigationBarItem(
-            icon: Icon(Icons.circle),
-            label: title,
-          );
-        }).toList(),
-        onTap: (index) {
-          if (menuList[index] == 'ホーム') {
-            Navigator.pushNamed(context, '/login');
-          } else if (menuList[index] == '設定') {
-            Navigator.pushNamed(context, '/setting');
-          } else if (menuList[index] == 'お問い合わせ') {
-            Navigator.pushNamed(context, '/info');
-          }
-        },
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.only(top:8.0), 
+        child: BottomNavigationBar(
+          items: menuList.map((title) {
+            return BottomNavigationBarItem(
+              icon: Icon(Icons.circle),
+              label: title,
+            );
+          }).toList(),
+          onTap: (index) {
+            if (menuList[index] == 'ホーム') {
+              Navigator.pushNamed(context, '/main');
+            } else if (menuList[index] == 'お気に入り') {
+              Navigator.pushNamed(context, '/favorite');
+            } else if (menuList[index] == '設定') {
+              Navigator.pushNamed(context, '/setting');
+            }
+          },
+        ),
       ),
     );
   }
 
   Widget listTile(String title) {
-    return InkWell(  
+    return InkWell(
+      onTap: () {
+        if (title == 'ホーム') {
+          Navigator.pushNamed(context, '/main');
+        } else if (title == 'お気に入り') {
+          Navigator.pushNamed(context, '/favorite');
+        } else if (title == '設定') {
+          Navigator.pushNamed(context, '/setting');
+        } else if (title == 'お問い合わせ') {
+          Navigator.pushNamed(context, '/info');
+        }
+      },
       child: Column(
         children: [
           Padding(
@@ -270,43 +296,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class PlantDetailScreen extends StatelessWidget {
-  final Map plant;
-
-  PlantDetailScreen({required this.plant});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(plant['name']),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(30.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Image.network(
-                plant['images'],
-                height: MediaQuery.of(context).size.height * 0.4,
-                fit: BoxFit.cover,
-              ),
-              const SizedBox(height: 30),
-              Text(
-                plant['description'],
-                style: const TextStyle(fontSize: 18),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

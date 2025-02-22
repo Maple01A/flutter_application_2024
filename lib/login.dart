@@ -89,11 +89,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 shadowColor: Colors.grey,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 16, width: 16,),
             ElevatedButton.icon(
               onPressed: _signInWithGoogle,
               icon: const Icon(Icons.account_circle),
-              label: const Text("Googleでログイン"),
+              label: const Text("ログイン"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
