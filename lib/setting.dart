@@ -24,7 +24,7 @@ class _Setting extends State<Setting> {
       body: ListView(
         children: [
           ListTile(
-            title: const Text('テーマカラーを選択'),
+            title: const Text('テーマカラー'),
             trailing: CircleAvatar(
               backgroundColor: _selectedColor,
             ),
@@ -32,7 +32,7 @@ class _Setting extends State<Setting> {
               Color? pickedColor = await showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
-                  title: const Text('テーマカラーを選択'),
+                  title: const Text('テーマカラー'),
                   content: SingleChildScrollView(
                     child: BlockPicker(
                       pickerColor: _selectedColor,
@@ -57,7 +57,7 @@ class _Setting extends State<Setting> {
             },
           ),
           ListTile(
-            title: const Text('グリッド列数を選択'),
+            title: const Text('グリッド列数'),
             trailing: DropdownButton<int>(
               value: _crossAxisCount,
               items: [2, 3, 4].map((int value) {

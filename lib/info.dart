@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server.dart';
 
 class Info extends StatefulWidget {
   @override
@@ -19,6 +21,25 @@ class _Info extends State<Info> {
     super.dispose();
   }
 
+  Future<void> _sendEmail(String name, String email, String message) async {
+    final smtpServer = gmail('your-email@gmail.com', 'your-email-password'); // Gmail SMTP サーバーを使用
+    final mailMessage = Message()
+      ..from = Address(email, name)
+      ..recipients.add('dendounglau@gmail.com') // 受信者のメールアドレス
+      ..subject = 'お問い合わせ'
+      ..text = '名前: $name\nメールアドレス: $email\nメッセージ:\n$message';
+
+    try {
+      final sendReport = await send(mailMessage, smtpServer);
+      print('Message sent: ' + sendReport.toString());
+    } on MailerException catch (e) {
+      print('Message not sent. \n' + e.toString());
+      for (var p in e.problems) {
+        print('Problem: ${p.code}: ${p.msg}');
+      }
+    }
+  }
+
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
       // フォームが有効な場合、問い合わせ内容を送信する処理を追加
@@ -26,10 +47,8 @@ class _Info extends State<Info> {
       final email = _emailController.text;
       final message = _messageController.text;
 
-      // ここに問い合わせ内容を送信する処理を追加
-      print('Name: $name');
-      print('Email: $email');
-      print('Message: $message');
+      // メールを送信
+      _sendEmail(name, email, message);
 
       // フォームをリセット
       _formKey.currentState!.reset();

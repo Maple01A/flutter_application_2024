@@ -43,6 +43,7 @@ dependencies:
   flutter_colorpicker: ^1.0.3
   google_maps_flutter: ^2.0.6
   shared_preferences: ^2.0.6
+  mailer: ^5.0.0 # 
 
 dev_dependencies:
   flutter_test:

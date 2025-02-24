@@ -59,7 +59,8 @@ class _MyAppState extends State<MyApp> {
           onCrossAxisCountChanged: _changeCrossAxisCount,
         ),
         '/info': (context) => Info(),
-        '/favorite': (context) => FavoriteScreen(), // 修正
+        '/favorite': (context) => FavoriteScreen(),
+        'logout': (context) => LoginScreen(),
       },
     );
   }
@@ -77,6 +78,8 @@ class PlantListScreen extends StatefulWidget {
 class _PlantListScreenState extends State<PlantListScreen> {
   List plants = [];
   List favoritePlants = []; // お気に入りリスト
+  List filteredPlants = []; // 検索結果リスト
+  TextEditingController searchController = TextEditingController();
 
   void _navigateAddPlant() async {
     final result = await Navigator.push(
@@ -87,6 +90,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
     if (result != null) {
       setState(() {
         plants.add(result);
+        filteredPlants = plants;
       });
     }
   }
@@ -101,10 +105,23 @@ class _PlantListScreenState extends State<PlantListScreen> {
     });
   }
 
+  void _filterPlants(String query) {
+    setState(() {
+      filteredPlants = plants.where((plant) {
+        final plantName = plant['name'].toLowerCase();
+        final searchQuery = query.toLowerCase();
+        return plantName.contains(searchQuery);
+      }).toList();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     loadPlantData();
+    searchController.addListener(() {
+      _filterPlants(searchController.text);
+    });
   }
 
   Future<void> loadPlantData() async {
@@ -136,6 +153,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
       setState(() {
         plants = tempPlants;
+        filteredPlants = plants;
       });
     } catch (e) {
       print("エラーが発生しました: $e");
@@ -147,7 +165,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
   }
 
   final menuList = ['ホーム', 'お気に入り', '設定'];
-  final menuList1 = ['名前', 'お問い合わせ'];
+  final menuList1 = ['名前', 'お問い合わせ', 'ログアウト'];
 
   @override
   Widget build(BuildContext context) {
@@ -171,17 +189,28 @@ class _PlantListScreenState extends State<PlantListScreen> {
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: searchController,
+              decoration: InputDecoration(
+                labelText: '名前で検索',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+          ),
           Expanded(
-            child: plants.isEmpty
+            child: filteredPlants.isEmpty
                 ? const Center(child: CircularProgressIndicator())
                 : GridView.builder(
-                    itemCount: plants.length,
+                    itemCount: filteredPlants.length,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: widget.crossAxisCount,
                       childAspectRatio: widget.crossAxisCount == 1 ? 2 : 1,
                     ),
                     itemBuilder: (context, index) {
-                      final plant = plants[index];
+                      final plant = filteredPlants[index];
                       final isFavorite = favoritePlants.contains(plant);
                       return Padding(
                         padding: const EdgeInsets.all(8.0),
@@ -202,19 +231,20 @@ class _PlantListScreenState extends State<PlantListScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: <Widget>[
-                                Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(15),
-                                    child: Image.network(
-                                      plant['images'],
-                                      height: widget.crossAxisCount == 1 ? 200 : 120,
-                                      fit: BoxFit.cover,
+                                Flexible( // 追加
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(15),
+                                      child: Image.network(
+                                        plant['images'],
+                                        fit: BoxFit.cover,
+                                      ),
                                     ),
                                   ),
                                 ),
                                 Padding(
-                                  padding: const EdgeInsets.all(1.0),
+                                  padding: const EdgeInsets.all(8.0),
                                   child: Column(
                                     children: [
                                       Text(
@@ -253,11 +283,11 @@ class _PlantListScreenState extends State<PlantListScreen> {
           }).toList(),
           onTap: (index) {
             if (menuList[index] == 'ホーム') {
-              Navigator.pushNamed(context, '/main');
+              Navigator.pushReplacementNamed(context, '/home'); 
             } else if (menuList[index] == 'お気に入り') {
-              Navigator.pushNamed(context, '/favorite');
+              Navigator.pushNamed(context, '/favorite'); 
             } else if (menuList[index] == '設定') {
-              Navigator.pushNamed(context, '/setting');
+              Navigator.pushNamed(context, '/setting'); 
             }
           },
         ),
@@ -276,6 +306,9 @@ class _PlantListScreenState extends State<PlantListScreen> {
           Navigator.pushNamed(context, '/setting');
         } else if (title == 'お問い合わせ') {
           Navigator.pushNamed(context, '/info');
+        }
+          else if (title == 'ログアウト') {
+          Navigator.pushNamed(context, '/login');
         }
       },
       child: Column(
