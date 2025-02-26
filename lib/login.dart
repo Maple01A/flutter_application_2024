@@ -11,6 +11,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   Future<void> _signInWithGoogle() async {
     try {
@@ -53,6 +55,33 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _signInWithEmailAndPassword() async {
+    try {
+      final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+
+      log("メールアドレスでログイン: ${userCredential.user?.email}");
+      Navigator.pushReplacementNamed(context, '/home'); // ホーム画面に遷移
+    } catch (e) {
+      log("メールアドレスでのログインエラー: $e");
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("ログインエラー"),
+          content: Text(e.toString()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -65,24 +94,24 @@ class _LoginScreenState extends State<LoginScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const FlutterLogo(
-              size: 100, // アイコンのサイズを指定
+              size: 100, 
             ),
             const SizedBox(height: 16),
             TextField(
+              controller: _emailController,
               decoration: const InputDecoration(labelText: "メールアドレス"),
               keyboardType: TextInputType.emailAddress,
             ),
             TextField(
+              controller: _passwordController,
               decoration: const InputDecoration(labelText: "パスワード"),
               obscureText: true,
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pushReplacementNamed(context, '/home');
-              },
-              icon: const FlutterLogo(), // Flutterのアイコンを追加
-              label: const Text("ログイン"),
+              onPressed: _signInWithEmailAndPassword,
+              icon: const Icon(Icons.email), // メールアイコンを追加
+              label: const Text("メールでログイン"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
@@ -93,7 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ElevatedButton.icon(
               onPressed: _signInWithGoogle,
               icon: const Icon(Icons.account_circle),
-              label: const Text("ログイン"),
+              label: const Text("Googleでログイン"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,

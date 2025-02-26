@@ -1,0 +1,16 @@
+{
+  "name": "flutter_application_2024",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "flutter run",
+    "build": "flutter build",
+    "test": "flutter test"
+  },
+  "dependencies": {
+    "flutter": ">=2.0.0",
+    "firebase_core": "^1.10.0",
+    "cloud_firestore": "^3.1.5",
+    "firebase_storage": "^10.2.0",
+    "flutter_colorpicker": "^1.0.3"
+  }
+}

@@ -41,9 +41,8 @@ dependencies:
   google_sign_in: ^6.2.1
   firebase_core: ^2.5.0
   flutter_colorpicker: ^1.0.3
-  google_maps_flutter: ^2.0.6
-  shared_preferences: ^2.0.6
-  mailer: ^5.0.0 # 
+  shared_preferences: ^2.5.2
+  mailer: ^6.4.1
 
 dev_dependencies:
   flutter_test:

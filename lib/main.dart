@@ -299,7 +299,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
     return InkWell(
       onTap: () {
         if (title == 'ホーム') {
-          Navigator.pushNamed(context, '/main');
+          Navigator.pushReplacementNamed(context, '/main');
         } else if (title == 'お気に入り') {
           Navigator.pushNamed(context, '/favorite');
         } else if (title == '設定') {
@@ -308,7 +308,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
           Navigator.pushNamed(context, '/info');
         }
           else if (title == 'ログアウト') {
-          Navigator.pushNamed(context, '/login');
+          Navigator.pushReplacementNamed(context, '/login');
         }
       },
       child: Column(
