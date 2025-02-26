@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:developer';
+import 'main.dart'; // MyAppクラスをインポート
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -22,8 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return; // ユーザーがキャンセルした場合
       }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
       // Firebaseの認証用Credentialを取得
       final AuthCredential credential = GoogleAuthProvider.credential(
@@ -32,10 +32,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       // Firebaseにログイン
-      final UserCredential userCredential =
-          await _auth.signInWithCredential(credential);
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
 
       log("Googleユーザーとしてログイン: ${userCredential.user?.displayName}");
+      MyApp.userName = userCredential.user?.displayName ?? "ゲスト"; // ユーザー名を設定
       Navigator.pushReplacementNamed(context, '/home'); // ホーム画面に遷移
     } catch (e) {
       log("Googleログインエラー: $e");
@@ -63,6 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       log("メールアドレスでログイン: ${userCredential.user?.email}");
+      MyApp.userName = userCredential.user?.email ?? "ゲスト"; // ユーザー名を設定
       Navigator.pushReplacementNamed(context, '/home'); // ホーム画面に遷移
     } catch (e) {
       log("メールアドレスでのログインエラー: $e");
@@ -80,6 +81,11 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
+  }
+
+  void _continueWithoutLogin() {
+    MyApp.userName = "ゲスト"; // ユーザー名を「ゲスト」に設定
+    Navigator.pushReplacementNamed(context, '/home'); // ホーム画面に遷移
   }
 
   @override
@@ -127,6 +133,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
                 shadowColor: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _continueWithoutLogin,
+              child: const Text("ログインせずに続行"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.grey,
+                foregroundColor: Colors.white,
               ),
             ),
           ],

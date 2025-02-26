@@ -9,6 +9,7 @@ import 'package:flutter_application_2024/info.dart';
 import 'package:flutter_application_2024/detail.dart';
 import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Firebase Authenticationをインポート
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,8 @@ void main() async {
 }
 
 class MyApp extends StatefulWidget {
+  static String userName = "ゲスト"; // ユーザー名を保持する変数
+
   @override
   _MyAppState createState() => _MyAppState();
 }
@@ -27,6 +30,16 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   Color _themeColor = Colors.lightBlueAccent;
   int _crossAxisCount = 2;
+  User? _user; // ユーザー情報を保持する変数
+
+  @override
+  void initState() {
+    super.initState();
+    _user = FirebaseAuth.instance.currentUser; // 現在のユーザーを取得
+    if (_user != null) {
+      MyApp.userName = _user!.displayName ?? "ゲスト";
+    }
+  }
 
   void _changeThemeColor(Color color) {
     setState(() {
@@ -80,6 +93,17 @@ class _PlantListScreenState extends State<PlantListScreen> {
   List favoritePlants = []; // お気に入りリスト
   List filteredPlants = []; // 検索結果リスト
   TextEditingController searchController = TextEditingController();
+  User? _user; // ユーザー情報を保持する変数
+
+  @override
+  void initState() {
+    super.initState();
+    _user = FirebaseAuth.instance.currentUser; // 現在のユーザーを取得
+    loadPlantData();
+    searchController.addListener(() {
+      _filterPlants(searchController.text);
+    });
+  }
 
   void _navigateAddPlant() async {
     final result = await Navigator.push(
@@ -112,15 +136,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
         final searchQuery = query.toLowerCase();
         return plantName.contains(searchQuery);
       }).toList();
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    loadPlantData();
-    searchController.addListener(() {
-      _filterPlants(searchController.text);
     });
   }
 
@@ -299,15 +314,14 @@ class _PlantListScreenState extends State<PlantListScreen> {
     return InkWell(
       onTap: () {
         if (title == 'ホーム') {
-          Navigator.pushReplacementNamed(context, '/main');
+          Navigator.pushReplacementNamed(context, '/home');
         } else if (title == 'お気に入り') {
           Navigator.pushNamed(context, '/favorite');
         } else if (title == '設定') {
           Navigator.pushNamed(context, '/setting');
         } else if (title == 'お問い合わせ') {
           Navigator.pushNamed(context, '/info');
-        }
-          else if (title == 'ログアウト') {
+        } else if (title == 'ログアウト') {
           Navigator.pushReplacementNamed(context, '/login');
         }
       },
@@ -319,7 +333,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  title,
+                  title == '名前' ? '${title} ${MyApp.userName}' : title,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 20,
