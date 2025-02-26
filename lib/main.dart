@@ -180,7 +180,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
   }
 
   final menuList = ['ホーム', 'お気に入り', '設定'];
-  final menuList1 = ['名前', 'お問い合わせ', 'ログアウト'];
+  final menuList1 = ['名前', 'ログアウト'];
 
   @override
   Widget build(BuildContext context) {
@@ -319,8 +319,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
           Navigator.pushNamed(context, '/favorite');
         } else if (title == '設定') {
           Navigator.pushNamed(context, '/setting');
-        } else if (title == 'お問い合わせ') {
-          Navigator.pushNamed(context, '/info');
         } else if (title == 'ログアウト') {
           Navigator.pushReplacementNamed(context, '/login');
         }
