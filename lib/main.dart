@@ -10,11 +10,21 @@ import 'package:flutter_application_2024/detail.dart';
 import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Firebase Authenticationをインポート
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Firebaseの初期化
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
+    
+    // App Checkの初期化
+    await FirebaseAppCheck.instance.activate(
+      webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
+      androidProvider: AndroidProvider.debug,
+      appleProvider: AppleProvider.appAttest,
+    );
   }
 
   runApp(MyApp());
@@ -224,7 +234,11 @@ class _PlantListScreenState extends State<PlantListScreen> {
           ),
           Expanded(
             child: filteredPlants.isEmpty
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color.fromARGB(255, 177, 173, 173)),
+                    ),
+                  )
                 : GridView.builder(
                     itemCount: filteredPlants.length,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -257,14 +271,17 @@ class _PlantListScreenState extends State<PlantListScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: <Widget>[
-                                Flexible( // 追加
+                                Flexible(
                                   child: Padding(
-                                    padding: const EdgeInsets.only(top: 8.0, bottom: 8.0, left: 8.0, right: 8.0),
+                                    padding: const EdgeInsets.all(8.0),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(15),
                                       child: Image.network(
                                         plant['images'],
                                         fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return const Icon(Icons.error);
+                                        },
                                       ),
                                     ),
                                   ),
@@ -303,18 +320,26 @@ class _PlantListScreenState extends State<PlantListScreen> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.only(top:8.0), 
         child: BottomNavigationBar(
-          items: menuList.map((title) {
-            return BottomNavigationBarItem(
-              icon: Icon(Icons.circle),
-              label: title,
-            );
-          }).toList(),
+          items: [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'ホーム',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.favorite),
+              label: 'お気に入り',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings),
+              label: '設定',
+            ),
+          ],
           onTap: (index) {
-            if (menuList[index] == 'ホーム') {
+            if (index == 0) {
               Navigator.pushReplacementNamed(context, '/home'); 
-            } else if (menuList[index] == 'お気に入り') {
+            } else if (index == 1) {
               Navigator.pushNamed(context, '/favorite'); 
-            } else if (menuList[index] == '設定') {
+            } else if (index == 2) {
               Navigator.pushNamed(context, '/setting'); 
             }
           },

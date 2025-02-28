@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import 'package:image/image.dart' as img;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:io';
 
 class AddPlantScreen extends StatefulWidget {
   @override
@@ -53,7 +53,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     try {
       final pickedFile = await ImagePicker().pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1024,  // ピッカーの段階で制限を設定
+        maxWidth: 1024,
         maxHeight: 1024,
       );
       
@@ -69,8 +69,8 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     } catch (e) {
       print('Error picking image: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('画像の選択中にエラーが発生しました。'),
+        const SnackBar(
+          content: Text('画像の選択中にエラーが発生しました。\n対応している画像形式: JPG, PNG, GIF, HEIC'),
           duration: Duration(seconds: 4),
         ),
       );
@@ -88,8 +88,11 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           context: context,
           barrierDismissible: false,
           builder: (BuildContext context) {
-            return Center(
-              child: CircularProgressIndicator(),
+            return WillPopScope(
+              onWillPop: () async => false,
+              child: const Center(
+                child: CircularProgressIndicator(),
+              ),
             );
           },
         );
@@ -97,33 +100,80 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
         String? imageUrl;
 
         if (_image != null) {
-          // ファイルサイズをチェック
-          int fileSize = await _image!.length();
-          if (fileSize > 5 * 1024 * 1024) { // 5MB以上の場合
-            throw Exception('画像サイズを5MB以下にしてください）');
-          }
+          try {
+            // オリジナルのファイル名と拡張子を取得
+            String originalFileName = _image!.path.split('/').last;
+            String extension = originalFileName.split('.').last.toLowerCase();
+            String fileName = originalFileName;
 
-          String fileName = DateTime.now().millisecondsSinceEpoch.toString() + '.jpg';
-          Reference storageRef = FirebaseStorage.instance.ref().child('plants/$fileName');
-          
-          // アップロード進捗を表示
-          UploadTask uploadTask = storageRef.putFile(_image!);
-          uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-            double progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('アップロード中: ${progress.toStringAsFixed(1)}%'),
-                duration: Duration(seconds: 1),
-              ),
+            // 対応している拡張子をチェック
+            if (!['jpg', 'jpeg', 'png', 'gif', 'heic'].contains(extension)) {
+              throw Exception('未対応の画像形式です。JPG, PNG, GIF, HEICのみ対応しています。');
+            }
+
+            // ファイルサイズをチェック
+            int fileSize = await _image!.length();
+            if (fileSize > 5 * 1024 * 1024) {
+              throw Exception('画像サイズを5MB以下にしてください');
+            }
+
+            // 同名ファイルの場合、タイムスタンプを追加
+            if (await _checkFileExists(fileName)) {
+              String nameWithoutExtension = fileName.split('.').first;
+              fileName = 'images/${nameWithoutExtension}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+            } else {
+              fileName = 'images/$fileName';
+            }
+
+            final Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
+            
+            // コンテンツタイプを設定
+            String contentType;
+            switch (extension) {
+              case 'jpg':
+              case 'jpeg':
+                contentType = 'image/jpeg';
+                break;
+              case 'png':
+                contentType = 'image/png';
+                break;
+              case 'gif':
+                contentType = 'image/gif';
+                break;
+              case 'heic':
+                contentType = 'image/heic';
+                break;
+              default:
+                contentType = 'image/jpeg';
+            }
+
+            // メタデータを設定
+            final metadata = SettableMetadata(
+              contentType: contentType,
+              customMetadata: {
+                'originalFileName': originalFileName,
+                'uploaded_by': FirebaseAuth.instance.currentUser?.uid ?? 'guest',
+              },
             );
-          });
+            
+            // アップロードタスクを作成して実行
+            final UploadTask uploadTask = storageRef.putFile(_image!, metadata);
+            
+            // アップロード完了を待つ
+            final TaskSnapshot snapshot = await uploadTask;
+            
+            // 画像のダウンロードURLを取得
+            imageUrl = fileName;  // Firestoreには相対パスを保存
+            print('Image uploaded successfully. Path: $imageUrl');
 
-          TaskSnapshot taskSnapshot = await uploadTask;
-          imageUrl = await taskSnapshot.ref.getDownloadURL();
+          } catch (e) {
+            print('Error uploading image: $e');
+            throw Exception('画像のアップロードに失敗しました: $e');
+          }
         }
 
         // 現在のユーザーIDを取得
-        String userId = FirebaseAuth.instance.currentUser?.uid ?? "5g7CsADD5qVb4TRgHTPbiN6AXmM2";
+        final String userId = FirebaseAuth.instance.currentUser?.uid ?? "5g7CsADD5qVb4TRgHTPbiN6AXmM2";
 
         // Firestoreにデータを保存
         await FirebaseFirestore.instance.collection('plants').add({
@@ -132,36 +182,58 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           'date': _dateController.text,
           'images': imageUrl ?? 'https://placehold.jp/300x300.png',
           'userId': userId,
+          'createdAt': FieldValue.serverTimestamp(),
         });
 
-        // 進捗表示を閉じる
-        Navigator.pop(context);
+        // ローディングダイアログを閉じる
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
 
         // 追加完了のメッセージを表示
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_nameController.text}を追加しました')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${_nameController.text}を追加しました')),
+          );
+        }
 
-        // ホーム画面に戻り、再読み込みを指示
-        Navigator.of(context).pop(true);  // trueを返して再読み込みを指示
+        // 少し待ってからホーム画面に戻る
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) {
+          Navigator.of(context).pop(true);
+        }
 
       } catch (e) {
-        // エラー時は進捗表示を閉じる
-        Navigator.pop(context);
+        print('Error in _uploadPlant: $e');
         
-        print('Error uploading plant: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('エラーが発生しました: ${e.toString()}')),
-        );
+        // ローディングダイアログを閉じる
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('エラーが発生しました: ${e.toString()}'),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
 
         setState(() {
           _isUploading = false;
         });
       }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('すべての必須入力項目を正しく入力してください')),
-      );
+    }
+  }
+
+  // 同名ファイルの存在チェック
+  Future<bool> _checkFileExists(String fileName) async {
+    try {
+      await FirebaseStorage.instance.ref('images/$fileName').getDownloadURL();
+      return true;  // ファイルが存在する
+    } catch (e) {
+      return false;  // ファイルが存在しない
     }
   }
 
@@ -172,9 +244,9 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       firstDate: DateTime(2000),
       lastDate: DateTime(2101),
     );
-    if (picked != null && picked != DateTime.now()) {
+    if (picked != null) {
       setState(() {
-        _dateController.text = "${picked.toLocal()}".split(' ')[0];
+        _dateController.text = "${picked.year}年${picked.month}月${picked.day}日";
       });
     }
   }
@@ -230,17 +302,22 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                     ),
                     const SizedBox(height: 16),
                     _image == null
-                        ? Text('画像')
+                        ? Column(
+                            children: const [
+                              Text('画像を選択してください'),
+                              SizedBox(height: 8),
+                            ],
+                          )
                         : Image.file(_image!, height: 200),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24.0),
                       child: SizedBox(
-                        width: 200, // ボタンの幅を変更
+                        width: 200,
                         child: ElevatedButton(
-                          onPressed: _pickImage,
+                          onPressed: _isUploading ? null : _pickImage,
                           child: Padding(
                             padding: const EdgeInsets.all(16.0),
-                            child: Text('画像を選択'),
+                            child: Text(_isUploading ? '画像選択中...' : '画像を選択'),
                           ),
                         ),
                       ),
@@ -254,12 +331,29 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: SizedBox(
-                  width: double.infinity, // ボタンの幅を画面いっぱいに変更
+                  width: double.infinity,
+                  height: 56, // ボタンの高さを固定
                   child: ElevatedButton(
                     onPressed: _isUploading ? null : _uploadPlant,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Text(_isUploading ? 'アップロード中...' : '追加'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 3, // 影の深さ
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(28), // より丸みを持たせる
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16.0,
+                        horizontal: 24.0,
+                      ),
+                    ),
+                    child: Text(
+                      _isUploading ? 'アップロード中...' : '追加',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2, // 文字間隔を少し広げる
+                      ),
                     ),
                   ),
                 ),
