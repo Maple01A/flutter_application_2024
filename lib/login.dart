@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:developer';
-import 'main.dart'; // MyAppクラスをインポート
+import 'main.dart'; 
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -23,7 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return; // ユーザーがキャンセルした場合
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
 
       // Firebaseの認証用Credentialを取得
       final AuthCredential credential = GoogleAuthProvider.credential(
@@ -32,11 +33,12 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       // Firebaseにログイン
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final UserCredential userCredential =
+          await _auth.signInWithCredential(credential);
 
       log("Googleユーザーとしてログイン: ${userCredential.user?.displayName}");
       MyApp.userName = userCredential.user?.displayName ?? "ゲスト"; // ユーザー名を設定
-      Navigator.pushReplacementNamed(context, '/home'); // ホーム画面に遷移
+      Navigator.pushReplacementNamed(context, '/home'); 
     } catch (e) {
       log("Googleログインエラー: $e");
       showDialog(
@@ -67,14 +69,16 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+      final UserCredential userCredential =
+          await _auth.signInWithEmailAndPassword(
         email: _emailController.text,
         password: _passwordController.text,
       );
 
       // ユーザー名の設定を修正
-      MyApp.userName = userCredential.user?.email?.split('@')[0] ?? "ゲスト"; // メールアドレスのユーザー名部分を使用
-      
+      MyApp.userName = userCredential.user?.email?.split('@')[0] ??
+          "ゲスト"; // メールアドレスのユーザー名部分を使用
+
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       log("メールアドレスでのログインエラー: $e");
@@ -105,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _continueWithoutLogin() {
-    MyApp.userName = "5g7CsADD5qVb4TRgHTPbiN6AXmM2";  // 指定されたUIDを設定
+    MyApp.userName = "5g7CsADD5qVb4TRgHTPbiN6AXmM2"; // 指定されたUIDを設定
     Navigator.pushReplacementNamed(context, '/home');
   }
 
@@ -121,14 +125,14 @@ class _LoginScreenState extends State<LoginScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const FlutterLogo(
-              size: 100, 
+              size: 100,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _emailController,
               decoration: const InputDecoration(
                 labelText: "メールアドレス",
-                prefixIcon: Icon(Icons.email),  // アイコンを追加
+                prefixIcon: Icon(Icons.email), 
               ),
               keyboardType: TextInputType.emailAddress,
             ),
@@ -136,14 +140,14 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: _passwordController,
               decoration: const InputDecoration(
                 labelText: "パスワード",
-                prefixIcon: Icon(Icons.lock),  // アイコンを追加
+                prefixIcon: Icon(Icons.lock), 
               ),
               obscureText: true,
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _signInWithEmailAndPassword,
-              icon: const Icon(Icons.email), // メールアイコンを追加
+              icon: const Icon(Icons.email), 
               label: const Text("メールでログイン"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
@@ -151,7 +155,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 shadowColor: Colors.grey,
               ),
             ),
-            const SizedBox(height: 16, width: 16,),
+            const SizedBox(
+              height: 16,
+              width: 16,
+            ),
             ElevatedButton.icon(
               onPressed: _signInWithGoogle,
               icon: const Icon(Icons.account_circle),

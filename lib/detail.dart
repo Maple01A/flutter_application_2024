@@ -29,7 +29,8 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       List<dynamic> favoritePlantsList = jsonDecode(favoritePlantsString);
       favoritePlants = favoritePlantsList.map((item) => item as Map).toList();
       setState(() {
-        isFavorite = favoritePlants.any((plant) => plant['id'] == widget.plant['id']);
+        isFavorite =
+            favoritePlants.any((plant) => plant['id'] == widget.plant['id']);
       });
     }
   }
@@ -127,9 +128,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                   Text(
                     widget.plant['name'],
                     style: const TextStyle(
-                      fontSize: 28, // フォントサイズを大きく
+                      fontSize: 28, 
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87, // 色を濃く
+                      color: Colors.black87, 
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -137,8 +138,8 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                   Text(
                     widget.plant['description'],
                     style: const TextStyle(
-                      fontSize: 20, // フォントサイズを大きく
-                      color: Colors.black54, // 色を少し薄く
+                      fontSize: 20, 
+                      color: Colors.black54, 
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -147,7 +148,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                     child: IconButton(
                       icon: Icon(
                         isFavorite ? Icons.favorite : Icons.favorite_border,
-                        color: isFavorite ? Colors.red[300]: null,
+                        color: isFavorite ? Colors.red[300] : null,
                       ),
                       onPressed: () {
                         _toggleFavorite(widget.plant);

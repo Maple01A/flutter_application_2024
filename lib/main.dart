@@ -2,6 +2,7 @@ import 'package:flutter/material.dart'; //flutterのインターフェース
 import 'package:firebase_core/firebase_core.dart'; //firebaseの初期化
 import 'package:cloud_firestore/cloud_firestore.dart'; //firestoreの操作
 import 'package:firebase_storage/firebase_storage.dart'; //firebase storageの連携
+import 'package:firebase_auth/firebase_auth.dart'; // Firebase Authenticationをインポート
 import 'package:flutter_application_2024/add.dart';
 import 'package:flutter_application_2024/login.dart';
 import 'package:flutter_application_2024/setting.dart';
@@ -9,16 +10,15 @@ import 'package:flutter_application_2024/info.dart';
 import 'package:flutter_application_2024/detail.dart';
 import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Firebase Authenticationをインポート
 import 'package:firebase_app_check/firebase_app_check.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Firebaseの初期化
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
-    
+
     // App Checkの初期化
     await FirebaseAppCheck.instance.activate(
       webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
@@ -78,11 +78,11 @@ class _MyAppState extends State<MyApp> {
         '/login': (context) => LoginScreen(),
         '/home': (context) => PlantListScreen(crossAxisCount: _crossAxisCount),
         '/setting': (context) => Setting(
-          onThemeColorChanged: _changeThemeColor,
-          onCrossAxisCountChanged: _changeCrossAxisCount,
-          initialColor: _themeColor,
-          initialCrossAxisCount: _crossAxisCount,
-        ),
+              onThemeColorChanged: _changeThemeColor,
+              onCrossAxisCountChanged: _changeCrossAxisCount,
+              initialColor: _themeColor,
+              initialCrossAxisCount: _crossAxisCount,
+            ),
         '/info': (context) => Info(),
         '/favorite': (context) => FavoriteScreen(),
         'logout': (context) => LoginScreen(),
@@ -155,13 +155,15 @@ class _PlantListScreenState extends State<PlantListScreen> {
       List<Map<String, dynamic>> tempPlants = [];
 
       // ログイン中のユーザーのUIDを取得
-      String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "5g7CsADD5qVb4TRgHTPbiN6AXmM2";
+      String currentUserId = FirebaseAuth.instance.currentUser?.uid ??
+          "5g7CsADD5qVb4TRgHTPbiN6AXmM2";
 
       // Firestoreからログイン中のユーザーのデータのみを取得
-      QuerySnapshot querySnapshot = await firestore.collection('plants')
-          .where('userId', isEqualTo: currentUserId)  // userIdフィールドでフィルタリング
+      QuerySnapshot querySnapshot = await firestore
+          .collection('plants')
+          .where('userId', isEqualTo: currentUserId) // userIdフィールドでフィルタリング
           .get();
-      
+
       print('Total plants fetched: ${querySnapshot.docs.length}');
 
       for (var doc in querySnapshot.docs) {
@@ -174,10 +176,11 @@ class _PlantListScreenState extends State<PlantListScreen> {
                 .ref(plantData['images'])
                 .getDownloadURL();
             plantData['images'] = imageUrl;
-          } 
+          }
           tempPlants.add(plantData);
         } catch (e) {
-          print('Error getting image URL for ${plantData['name'] ?? 'Unknown'}: $e');
+          print(
+              'Error getting image URL for ${plantData['name'] ?? 'Unknown'}: $e');
           plantData['images'] = 'https://placehold.jp/300x300.png';
           tempPlants.add(plantData);
         }
@@ -211,7 +214,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
             const DrawerHeader(
               child: Center(
                 child: FlutterLogo(
-                  size: 100, // アイコンのサイズを指定
+                  size: 100, 
                 ),
               ),
             ),
@@ -236,7 +239,8 @@ class _PlantListScreenState extends State<PlantListScreen> {
             child: filteredPlants.isEmpty
                 ? const Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Color.fromARGB(255, 177, 173, 173)),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          Color.fromARGB(255, 177, 173, 173)),
                     ),
                   )
                 : GridView.builder(
@@ -255,10 +259,11 @@ class _PlantListScreenState extends State<PlantListScreen> {
                             final needsReload = await Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => PlantDetailScreen(plant: plant),
+                                builder: (context) =>
+                                    PlantDetailScreen(plant: plant),
                               ),
                             );
-                            
+
                             if (needsReload == true) {
                               await loadPlantData();
                             }
@@ -279,7 +284,8 @@ class _PlantListScreenState extends State<PlantListScreen> {
                                       child: Image.network(
                                         plant['images'],
                                         fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
                                           return const Icon(Icons.error);
                                         },
                                       ),
@@ -287,14 +293,20 @@ class _PlantListScreenState extends State<PlantListScreen> {
                                   ),
                                 ),
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 0.0, bottom: 8.0, left: 8.0, right: 8.0),
+                                  padding: const EdgeInsets.only(
+                                      top: 0.0,
+                                      bottom: 8.0,
+                                      left: 8.0,
+                                      right: 8.0),
                                   child: Column(
                                     children: [
                                       Text(
                                         plant['name'],
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
-                                          fontSize: widget.crossAxisCount == 3 ? 12 : 17, // 3列の場合は12、それ以外は17
+                                          fontSize: widget.crossAxisCount == 3
+                                              ? 12
+                                              : 17, 
                                           fontWeight: FontWeight.bold,
                                         ),
                                         maxLines: 2,
@@ -318,7 +330,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
         child: const Icon(Icons.add),
       ),
       bottomNavigationBar: Padding(
-        padding: const EdgeInsets.only(top:8.0), 
+        padding: const EdgeInsets.only(top: 8.0),
         child: BottomNavigationBar(
           items: [
             BottomNavigationBarItem(
@@ -336,11 +348,11 @@ class _PlantListScreenState extends State<PlantListScreen> {
           ],
           onTap: (index) {
             if (index == 0) {
-              Navigator.pushReplacementNamed(context, '/home'); 
+              Navigator.pushReplacementNamed(context, '/home');
             } else if (index == 1) {
-              Navigator.pushNamed(context, '/favorite'); 
+              Navigator.pushNamed(context, '/favorite');
             } else if (index == 2) {
-              Navigator.pushNamed(context, '/setting'); 
+              Navigator.pushNamed(context, '/setting');
             }
           },
         ),
@@ -372,14 +384,15 @@ class _PlantListScreenState extends State<PlantListScreen> {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  title == '名前' 
-                    ? '${title} ${MyApp.userName == "5g7CsADD5qVb4TRgHTPbiN6AXmM2" ? "ゲスト" : MyApp.userName}'  // UIDが一致する場合は"ゲスト"と表示
-                    : title,
+                  title == '名前'
+                      ? '${title} ${MyApp.userName == "5g7CsADD5qVb4TRgHTPbiN6AXmM2" ? "ゲスト" : MyApp.userName}' // UIDが一致する場合は"ゲスト"と表示
+                      : title,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 20,

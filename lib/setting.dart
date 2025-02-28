@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_2024/info.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
-
 class Setting extends StatefulWidget {
   final Function(Color) onThemeColorChanged;
   final Function(int) onCrossAxisCountChanged;
@@ -110,7 +109,7 @@ class _Setting extends State<Setting> {
             leading: Icon(Icons.help),
             title: Text('ヘルプ'),
             onTap: () {
-            Navigator.pushNamed(context, '/info');
+              Navigator.pushNamed(context, '/info');
               // ヘルプ画面へのナビゲーション
             },
           ),

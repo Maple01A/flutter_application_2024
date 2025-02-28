@@ -38,7 +38,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       resizedImage = image;
     }
 
-    // JPEGとして圧縮（品質80%）
+    // JPEGとして圧縮（品質85%）
     final compressedBytes = img.encodeJpg(resizedImage, quality: 85);
 
     // 圧縮した画像を一時ファイルとして保存
@@ -56,12 +56,12 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
         maxWidth: 1024,
         maxHeight: 1024,
       );
-      
+
       if (pickedFile != null) {
         File imageFile = File(pickedFile.path);
         // 画像を圧縮
         File compressedFile = await _compressImage(imageFile);
-        
+
         setState(() {
           _image = compressedFile;
         });
@@ -120,13 +120,15 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
             // 同名ファイルの場合、タイムスタンプを追加
             if (await _checkFileExists(fileName)) {
               String nameWithoutExtension = fileName.split('.').first;
-              fileName = 'images/${nameWithoutExtension}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+              fileName =
+                  'images/${nameWithoutExtension}_${DateTime.now().millisecondsSinceEpoch}.$extension';
             } else {
               fileName = 'images/$fileName';
             }
 
-            final Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
-            
+            final Reference storageRef =
+                FirebaseStorage.instance.ref().child(fileName);
+
             // コンテンツタイプを設定
             String contentType;
             switch (extension) {
@@ -152,20 +154,20 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
               contentType: contentType,
               customMetadata: {
                 'originalFileName': originalFileName,
-                'uploaded_by': FirebaseAuth.instance.currentUser?.uid ?? 'guest',
+                'uploaded_by':
+                    FirebaseAuth.instance.currentUser?.uid ?? 'guest',
               },
             );
-            
+
             // アップロードタスクを作成して実行
             final UploadTask uploadTask = storageRef.putFile(_image!, metadata);
-            
+
             // アップロード完了を待つ
             final TaskSnapshot snapshot = await uploadTask;
-            
-            // 画像のダウンロードURLを取得
-            imageUrl = fileName;  // Firestoreには相対パスを保存
-            print('Image uploaded successfully. Path: $imageUrl');
 
+            // 画像のダウンロードURLを取得
+            imageUrl = fileName; // Firestoreには相対パスを保存
+            print('Image uploaded successfully. Path: $imageUrl');
           } catch (e) {
             print('Error uploading image: $e');
             throw Exception('画像のアップロードに失敗しました: $e');
@@ -173,7 +175,8 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
         }
 
         // 現在のユーザーIDを取得
-        final String userId = FirebaseAuth.instance.currentUser?.uid ?? "5g7CsADD5qVb4TRgHTPbiN6AXmM2";
+        final String userId = FirebaseAuth.instance.currentUser?.uid ??
+            "5g7CsADD5qVb4TRgHTPbiN6AXmM2";
 
         // Firestoreにデータを保存
         await FirebaseFirestore.instance.collection('plants').add({
@@ -202,10 +205,9 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
         if (mounted) {
           Navigator.of(context).pop(true);
         }
-
       } catch (e) {
         print('Error in _uploadPlant: $e');
-        
+
         // ローディングダイアログを閉じる
         if (mounted && Navigator.canPop(context)) {
           Navigator.of(context, rootNavigator: true).pop();
@@ -231,9 +233,9 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
   Future<bool> _checkFileExists(String fileName) async {
     try {
       await FirebaseStorage.instance.ref('images/$fileName').getDownloadURL();
-      return true;  // ファイルが存在する
+      return true; // ファイルが存在する
     } catch (e) {
-      return false;  // ファイルが存在しない
+      return false; // ファイルが存在しない
     }
   }
 

@@ -22,7 +22,8 @@ class _Info extends State<Info> {
   }
 
   Future<void> _sendEmail(String name, String email, String message) async {
-    final smtpServer = gmail('your-email@gmail.com', 'your-email-password'); // Gmail SMTP サーバーを使用
+    final smtpServer = gmail(
+        'your-email@gmail.com', 'your-email-password'); // Gmail SMTP サーバーを使用
     final mailMessage = Message()
       ..from = Address(email, name)
       ..recipients.add('dendounglau@gmail.com') // 受信者のメールアドレス
