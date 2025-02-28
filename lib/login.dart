@@ -56,36 +56,57 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signInWithEmailAndPassword() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('メールアドレスとパスワードを入力してください'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     try {
       final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: _emailController.text,
         password: _passwordController.text,
       );
 
-      log("メールアドレスでログイン: ${userCredential.user?.email}");
-      MyApp.userName = userCredential.user?.email ?? "ゲスト"; // ユーザー名を設定
-      Navigator.pushReplacementNamed(context, '/home'); // ホーム画面に遷移
+      // ユーザー名の設定を修正
+      MyApp.userName = userCredential.user?.email?.split('@')[0] ?? "ゲスト"; // メールアドレスのユーザー名部分を使用
+      
+      Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       log("メールアドレスでのログインエラー: $e");
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text("ログインエラー"),
-          content: Text(e.toString()),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("OK"),
-            ),
-          ],
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_getErrorMessage(e)),
+          duration: const Duration(seconds: 3),
         ),
       );
     }
   }
 
+  // エラーメッセージを日本語化するヘルパーメソッド
+  String _getErrorMessage(dynamic e) {
+    if (e is FirebaseAuthException) {
+      switch (e.code) {
+        case 'user-not-found':
+          return 'アカウントが見つかりません';
+        case 'wrong-password':
+          return 'パスワードが間違っています';
+        case 'invalid-email':
+          return 'メールアドレスの形式が正しくありません';
+        default:
+          return 'ログインに失敗しました: ${e.message}';
+      }
+    }
+    return 'エラーが発生しました: $e';
+  }
+
   void _continueWithoutLogin() {
-    MyApp.userName = "ゲスト"; // ユーザー名を「ゲスト」に設定
-    Navigator.pushReplacementNamed(context, '/home'); // ホーム画面に遷移
+    MyApp.userName = "5g7CsADD5qVb4TRgHTPbiN6AXmM2";  // 指定されたUIDを設定
+    Navigator.pushReplacementNamed(context, '/home');
   }
 
   @override
@@ -105,12 +126,18 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _emailController,
-              decoration: const InputDecoration(labelText: "メールアドレス"),
+              decoration: const InputDecoration(
+                labelText: "メールアドレス",
+                prefixIcon: Icon(Icons.email),  // アイコンを追加
+              ),
               keyboardType: TextInputType.emailAddress,
             ),
             TextField(
               controller: _passwordController,
-              decoration: const InputDecoration(labelText: "パスワード"),
+              decoration: const InputDecoration(
+                labelText: "パスワード",
+                prefixIcon: Icon(Icons.lock),  // アイコンを追加
+              ),
               obscureText: true,
             ),
             const SizedBox(height: 16),

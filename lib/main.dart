@@ -70,6 +70,8 @@ class _MyAppState extends State<MyApp> {
         '/setting': (context) => Setting(
           onThemeColorChanged: _changeThemeColor,
           onCrossAxisCountChanged: _changeCrossAxisCount,
+          initialColor: _themeColor,
+          initialCrossAxisCount: _crossAxisCount,
         ),
         '/info': (context) => Info(),
         '/favorite': (context) => FavoriteScreen(),
@@ -106,16 +108,14 @@ class _PlantListScreenState extends State<PlantListScreen> {
   }
 
   void _navigateAddPlant() async {
-    final result = await Navigator.push(
+    final needsReload = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => AddPlantScreen()),
     );
 
-    if (result != null) {
-      setState(() {
-        plants.add(result);
-        filteredPlants = plants;
-      });
+    if (needsReload == true) {
+      // データを再読み込み
+      await loadPlantData();
     }
   }
 
@@ -144,25 +144,32 @@ class _PlantListScreenState extends State<PlantListScreen> {
       FirebaseFirestore firestore = FirebaseFirestore.instance;
       List<Map<String, dynamic>> tempPlants = [];
 
-      // Firestoreからデータを取得
-      QuerySnapshot querySnapshot = await firestore.collection('plants').get();
+      // ログイン中のユーザーのUIDを取得
+      String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? "5g7CsADD5qVb4TRgHTPbiN6AXmM2";
+
+      // Firestoreからログイン中のユーザーのデータのみを取得
+      QuerySnapshot querySnapshot = await firestore.collection('plants')
+          .where('userId', isEqualTo: currentUserId)  // userIdフィールドでフィルタリング
+          .get();
+      
       print('Total plants fetched: ${querySnapshot.docs.length}');
 
       for (var doc in querySnapshot.docs) {
         Map<String, dynamic> plantData = doc.data() as Map<String, dynamic>;
-        plantData['id'] = doc.id; // ドキュメントIDを追加
-        print('Plant Data: $plantData'); // デバッグ出力
+        plantData['id'] = doc.id;
 
         try {
-          // Firebase Storageから画像URLを取得
-          String imageUrl = await FirebaseStorage.instance
-              .ref(plantData['images'])
-              .getDownloadURL();
-          plantData['images'] = imageUrl;
+          if (plantData['images'] != null) {
+            String imageUrl = await FirebaseStorage.instance
+                .ref(plantData['images'])
+                .getDownloadURL();
+            plantData['images'] = imageUrl;
+          } 
           tempPlants.add(plantData);
         } catch (e) {
-          print(
-              'Error getting image URL for ${plantData['name'] ?? 'Unknown'}: $e');
+          print('Error getting image URL for ${plantData['name'] ?? 'Unknown'}: $e');
+          plantData['images'] = 'https://placehold.jp/300x300.png';
+          tempPlants.add(plantData);
         }
       }
 
@@ -230,13 +237,17 @@ class _PlantListScreenState extends State<PlantListScreen> {
                       return Padding(
                         padding: const EdgeInsets.all(8.0),
                         child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
+                          onTap: () async {
+                            final needsReload = await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => PlantDetailScreen(plant: plant),
                               ),
                             );
+                            
+                            if (needsReload == true) {
+                              await loadPlantData();
+                            }
                           },
                           child: Card(
                             elevation: 5,
@@ -248,7 +259,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                               children: <Widget>[
                                 Flexible( // 追加
                                   child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
+                                    padding: const EdgeInsets.only(top: 8.0, bottom: 8.0, left: 8.0, right: 8.0),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(15),
                                       child: Image.network(
@@ -259,16 +270,18 @@ class _PlantListScreenState extends State<PlantListScreen> {
                                   ),
                                 ),
                                 Padding(
-                                  padding: const EdgeInsets.all(8.0),
+                                  padding: const EdgeInsets.only(top: 0.0, bottom: 8.0, left: 8.0, right: 8.0),
                                   child: Column(
                                     children: [
                                       Text(
                                         plant['name'],
                                         textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontSize: 17,
+                                        style: TextStyle(
+                                          fontSize: widget.crossAxisCount == 3 ? 12 : 17, // 3列の場合は12、それ以外は17
                                           fontWeight: FontWeight.bold,
                                         ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
                                   ),
@@ -312,7 +325,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
   Widget listTile(String title) {
     return InkWell(
-      onTap: () {
+      onTap: () async {
         if (title == 'ホーム') {
           Navigator.pushReplacementNamed(context, '/home');
         } else if (title == 'お気に入り') {
@@ -320,7 +333,15 @@ class _PlantListScreenState extends State<PlantListScreen> {
         } else if (title == '設定') {
           Navigator.pushNamed(context, '/setting');
         } else if (title == 'ログアウト') {
-          Navigator.pushReplacementNamed(context, '/login');
+          try {
+            await FirebaseAuth.instance.signOut();
+            MyApp.userName = "ゲスト";
+            Navigator.pushReplacementNamed(context, '/login');
+          } catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('ログアウトに失敗しました: $e')),
+            );
+          }
         }
       },
       child: Column(
@@ -331,7 +352,9 @@ class _PlantListScreenState extends State<PlantListScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  title == '名前' ? '${title} ${MyApp.userName}' : title,
+                  title == '名前' 
+                    ? '${title} ${MyApp.userName == "5g7CsADD5qVb4TRgHTPbiN6AXmM2" ? "ゲスト" : MyApp.userName}'  // UIDが一致する場合は"ゲスト"と表示
+                    : title,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 20,

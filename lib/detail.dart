@@ -60,7 +60,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${widget.plant['name']}を削除しました')),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (e) {
       print("エラーが発生しました: $e");
       ScaffoldMessenger.of(context).showSnackBar(
@@ -143,7 +143,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                     textAlign: TextAlign.center,
                   ),
                   Padding(
-                    padding: const EdgeInsets.all(0),
+                    padding: const EdgeInsets.only(top: 5),
                     child: IconButton(
                       icon: Icon(
                         isFavorite ? Icons.favorite : Icons.favorite_border,
