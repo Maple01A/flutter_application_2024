@@ -11,6 +11,7 @@ import 'package:flutter_application_2024/detail.dart';
 import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:intl/intl.dart' as intl; // パッケージを追加
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -101,17 +102,26 @@ class PlantListScreen extends StatefulWidget {
 }
 
 class _PlantListScreenState extends State<PlantListScreen> {
+  static const double _cardBorderRadius = 15.0;
+  static const double _cardPadding = 8.0;
+  
   List plants = [];
-  List favoritePlants = []; // お気に入りリスト
-  List filteredPlants = []; // 検索結果リスト
+  List favoritePlants = [];
+  List filteredPlants = [];
   TextEditingController searchController = TextEditingController();
-  User? _user; // ユーザー情報を保持する変数
+  User? _user;
+  String _sortBy = 'name';
+  bool _isInitialized = false; // データ初期化フラグ
 
   @override
   void initState() {
     super.initState();
-    _user = FirebaseAuth.instance.currentUser; // 現在のユーザーを取得
-    loadPlantData();
+    _user = FirebaseAuth.instance.currentUser;
+    // 初回のみデータを読み込む
+    if (!_isInitialized) {
+      loadPlantData();
+      _isInitialized = true;
+    }
     searchController.addListener(() {
       _filterPlants(searchController.text);
     });
@@ -139,6 +149,46 @@ class _PlantListScreenState extends State<PlantListScreen> {
     });
   }
 
+  // ソート関数を改良
+  void _sortPlants() {
+    setState(() {
+      if (_sortBy == 'name') {
+        filteredPlants.sort((a, b) {
+          String nameA = a['name'] as String;
+          String nameB = b['name'] as String;
+          // 日本語対応の比較（より正確）
+          return nameA.compareTo(nameB);
+        });
+      } else if (_sortBy == 'date') {
+        filteredPlants.sort((a, b) {
+          DateTime dateA = _parseDate(a['date'] as String);
+          DateTime dateB = _parseDate(b['date'] as String);
+          return dateB.compareTo(dateA); // 新しい順
+        });
+      }
+    });
+  }
+
+  // 日付文字列をDateTime型に変換
+  DateTime _parseDate(String dateStr) {
+    try {
+      // "2024年3月15日" 形式の文字列をパース
+      List<String> parts = dateStr
+          .replaceAll('年', '-')
+          .replaceAll('月', '-')
+          .replaceAll('日', '')
+          .split('-');
+      return DateTime(
+        int.parse(parts[0]),
+        int.parse(parts[1]),
+        int.parse(parts[2]),
+      );
+    } catch (e) {
+      return DateTime(1900); // エラー時はデフォルト値
+    }
+  }
+
+  // 検索関数を修正
   void _filterPlants(String query) {
     setState(() {
       filteredPlants = plants.where((plant) {
@@ -146,6 +196,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
         final searchQuery = query.toLowerCase();
         return plantName.contains(searchQuery);
       }).toList();
+      _sortPlants(); // 検索後にソート
     });
   }
 
@@ -189,6 +240,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
       setState(() {
         plants = tempPlants;
         filteredPlants = plants;
+        _sortPlants(); // データ読み込み後にソート
       });
     } catch (e) {
       print("エラーが発生しました: $e");
@@ -202,11 +254,106 @@ class _PlantListScreenState extends State<PlantListScreen> {
   final menuList = ['ホーム', 'お気に入り', '設定'];
   final menuList1 = ['名前', 'ログアウト'];
 
+  // BottomNavigationBarのタップ処理を最適化
+  void _handleNavigationTap(int index) async {
+    if (index == 0) {
+      // ホームの場合は現在のデータを保持
+      return;
+    } else if (index == 1) {
+      // お気に入り画面に遷移（データを保持）
+      await Navigator.pushNamed(
+        context, 
+        '/favorite',
+      );
+    } else if (index == 2) {
+      // 設定画面に遷移（データを保持）
+      await Navigator.pushNamed(
+        context, 
+        '/setting',
+      );
+    }
+  }
+
+  // Drawerのナビゲーション処理を最適化
+  Future<void> _handleDrawerNavigation(String title) async {
+    if (title == 'ホーム') {
+      Navigator.pop(context); // Drawerを閉じる
+    } else if (title == 'お気に入り') {
+      Navigator.pop(context); // Drawerを閉じる
+      await Navigator.pushNamed(context, '/favorite');
+    } else if (title == '設定') {
+      Navigator.pop(context); // Drawerを閉じる
+      await Navigator.pushNamed(context, '/setting');
+    } else if (title == 'ログアウト') {
+      try {
+        await FirebaseAuth.instance.signOut();
+        MyApp.userName = "ゲスト";
+        Navigator.pushReplacementNamed(context, '/login');
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ログアウトに失敗しました: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('草花の図鑑'),
+        actions: [
+          // ソートメニューを追加
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.sort),
+            onSelected: (String value) {
+              setState(() {
+                _sortBy = value;
+                _sortPlants();
+              });
+            },
+            itemBuilder: (BuildContext context) => [
+              PopupMenuItem(
+                value: 'name',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.sort_by_alpha,
+                      color: _sortBy == 'name' ? Theme.of(context).colorScheme.primary : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '名前順',
+                      style: TextStyle(
+                        color: _sortBy == 'name' ? Theme.of(context).colorScheme.primary : null,
+                        fontWeight: _sortBy == 'name' ? FontWeight.bold : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'date',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_today,
+                      color: _sortBy == 'date' ? Theme.of(context).colorScheme.primary : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '日付順',
+                      style: TextStyle(
+                        color: _sortBy == 'date' ? Theme.of(context).colorScheme.primary : null,
+                        fontWeight: _sortBy == 'date' ? FontWeight.bold : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       drawer: Drawer(
         child: ListView(
@@ -243,85 +390,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                           Color.fromARGB(255, 177, 173, 173)),
                     ),
                   )
-                : GridView.builder(
-                    itemCount: filteredPlants.length,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: widget.crossAxisCount,
-                      childAspectRatio: widget.crossAxisCount == 1 ? 2 : 1,
-                    ),
-                    itemBuilder: (context, index) {
-                      final plant = filteredPlants[index];
-                      final isFavorite = favoritePlants.contains(plant);
-                      return Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: GestureDetector(
-                          onTap: () async {
-                            final needsReload = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    PlantDetailScreen(plant: plant),
-                              ),
-                            );
-
-                            if (needsReload == true) {
-                              await loadPlantData();
-                            }
-                          },
-                          child: Card(
-                            elevation: 5,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: <Widget>[
-                                Flexible(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(8.0),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(15),
-                                      child: Image.network(
-                                        plant['images'],
-                                        fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (context, error, stackTrace) {
-                                          return const Icon(Icons.error);
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                      top: 0.0,
-                                      bottom: 8.0,
-                                      left: 8.0,
-                                      right: 8.0),
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        plant['name'],
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: widget.crossAxisCount == 3
-                                              ? 12
-                                              : 17, 
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                : _buildGridView(),
           ),
         ],
       ),
@@ -332,7 +401,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.only(top: 8.0),
         child: BottomNavigationBar(
-          items: [
+          items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home),
               label: 'ホーム',
@@ -346,15 +415,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
               label: '設定',
             ),
           ],
-          onTap: (index) {
-            if (index == 0) {
-              Navigator.pushReplacementNamed(context, '/home');
-            } else if (index == 1) {
-              Navigator.pushNamed(context, '/favorite');
-            } else if (index == 2) {
-              Navigator.pushNamed(context, '/setting');
-            }
-          },
+          onTap: _handleNavigationTap,
         ),
       ),
     );
@@ -362,36 +423,17 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
   Widget listTile(String title) {
     return InkWell(
-      onTap: () async {
-        if (title == 'ホーム') {
-          Navigator.pushReplacementNamed(context, '/home');
-        } else if (title == 'お気に入り') {
-          Navigator.pushNamed(context, '/favorite');
-        } else if (title == '設定') {
-          Navigator.pushNamed(context, '/setting');
-        } else if (title == 'ログアウト') {
-          try {
-            await FirebaseAuth.instance.signOut();
-            MyApp.userName = "ゲスト";
-            Navigator.pushReplacementNamed(context, '/login');
-          } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('ログアウトに失敗しました: $e')),
-            );
-          }
-        }
-      },
+      onTap: () => _handleDrawerNavigation(title),
       child: Column(
         children: [
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   title == '名前'
-                      ? '${title} ${MyApp.userName == "5g7CsADD5qVb4TRgHTPbiN6AXmM2" ? "ゲスト" : MyApp.userName}' // UIDが一致する場合は"ゲスト"と表示
+                      ? '${title} ${MyApp.userName == "5g7CsADD5qVb4TRgHTPbiN6AXmM2" ? "ゲスト" : MyApp.userName}'
                       : title,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
@@ -404,5 +446,86 @@ class _PlantListScreenState extends State<PlantListScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildPlantCard(Map plant) {
+    return Card(
+      elevation: 5,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_cardBorderRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.all(_cardPadding),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(_cardBorderRadius),
+                child: Image.network(
+                  plant['images'],
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(Icons.error);
+                  },
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(
+              bottom: _cardPadding,
+              left: _cardPadding,
+              right: _cardPadding,
+            ),
+            child: Text(
+              plant['name'],
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: widget.crossAxisCount == 3 ? 12 : 17,
+                fontWeight: FontWeight.bold,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // GridViewのビルダーを分離
+  Widget _buildGridView() {
+    return GridView.builder(
+      itemCount: filteredPlants.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: widget.crossAxisCount,
+        childAspectRatio: widget.crossAxisCount == 1 ? 2 : 1,
+      ),
+      itemBuilder: (context, index) {
+        final plant = filteredPlants[index];
+        return Padding(
+          padding: const EdgeInsets.all(_cardPadding),
+          child: GestureDetector(
+            onTap: () => _navigateToDetail(plant),
+            child: _buildPlantCard(plant),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _navigateToDetail(Map plant) async {
+    final needsReload = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlantDetailScreen(plant: plant),
+      ),
+    );
+    
+    // 詳細画面で削除が行われた場合のみ再読み込み
+    if (needsReload == true) {
+      await loadPlantData();
+    }
   }
 }

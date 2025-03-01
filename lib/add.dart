@@ -253,11 +253,67 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     }
   }
 
+  Future<String?> _uploadImageToStorage(File image) async {
+    try {
+      String originalFileName = image.path.split('/').last;
+      String extension = originalFileName.split('.').last.toLowerCase();
+      
+      if (!['jpg', 'jpeg', 'png', 'gif', 'heic'].contains(extension)) {
+        throw Exception('未対応の画像形式です。JPG, PNG, GIF, HEICのみ対応しています。');
+      }
+
+      if (await image.length() > 5 * 1024 * 1024) {
+        throw Exception('画像サイズを5MB以下にしてください');
+      }
+
+      String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      String fileName = 'images/${timestamp}_$originalFileName';
+      
+      // Check if file already exists
+      while (await _checkFileExists(fileName)) {
+        timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        fileName = 'images/${timestamp}_$originalFileName';
+      }
+
+      final Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
+      
+      final metadata = SettableMetadata(
+        contentType: _getContentType(extension),
+        customMetadata: {
+          'originalFileName': originalFileName,
+          'uploaded_by': FirebaseAuth.instance.currentUser?.uid ?? 'guest',
+        },
+      );
+      
+      await storageRef.putFile(image, metadata);
+      return fileName;
+    } catch (e) {
+      print('Error uploading image: $e');
+      throw Exception('画像のアップロードに失敗しました: $e');
+    }
+  }
+
+  String _getContentType(String extension) {
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'heic':
+        return 'image/heic';
+      default:
+        return 'image/jpeg';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('新しい植物を追加'),
+        title: const Text('新しい植物を追加'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -270,7 +326,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                   children: [
                     TextFormField(
                       controller: _nameController,
-                      decoration: InputDecoration(labelText: '名前'),
+                      decoration: const InputDecoration(labelText: '名前'),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return '名前を入力してください';
@@ -280,7 +336,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                     ),
                     TextFormField(
                       controller: _descriptionController,
-                      decoration: InputDecoration(labelText: '説明'),
+                      decoration: const InputDecoration(labelText: '説明'),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return '説明を入力してください';
@@ -290,7 +346,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                     ),
                     TextFormField(
                       controller: _dateController,
-                      decoration: InputDecoration(labelText: '日付'),
+                      decoration: const InputDecoration(labelText: '日付'),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return '日付を入力してください';
@@ -298,51 +354,93 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                         return null;
                       },
                       onTap: () async {
-                        FocusScope.of(context).requestFocus(new FocusNode());
+                        FocusScope.of(context).requestFocus(FocusNode());
                         await _selectDate(context);
                       },
                     ),
-                    const SizedBox(height: 16),
-                    _image == null
-                        ? Column(
-                            children: const [
-                              Text('画像を選択してください'),
-                              SizedBox(height: 8),
-                            ],
-                          )
-                        : Image.file(_image!, height: 200),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24.0),
-                      child: SizedBox(
-                        width: 200,
-                        child: ElevatedButton(
-                          onPressed: _isUploading ? null : _pickImage,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text(_isUploading ? '画像選択中...' : '画像を選択'),
+                    const SizedBox(height: 24),
+                    // 画像選択エリア
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          if (_image != null)
+                            Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Image.file(
+                                  _image!,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    color: Colors.black54,
+                                    padding: const EdgeInsets.all(8),
+                                    child: const Text(
+                                      'タップして画像を変更',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _isUploading ? null : _pickImage,
+                            icon: const Icon(Icons.add_photo_alternate),
+                            label: Text(_image == null ? '画像を選択' : '画像を変更'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '対応形式: JPG, PNG, GIF, HEIC\n最大サイズ: 5MB',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
             ),
+            // 追加ボタン（既存のコード）
             Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16.0),
                 child: SizedBox(
                   width: double.infinity,
-                  height: 56, // ボタンの高さを固定
+                  height: 56,
                   child: ElevatedButton(
                     onPressed: _isUploading ? null : _uploadPlant,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Theme.of(context).colorScheme.primary,
                       foregroundColor: Colors.white,
-                      elevation: 3, // 影の深さ
+                      elevation: 3,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(28), // より丸みを持たせる
+                        borderRadius: BorderRadius.circular(28),
                       ),
                       padding: const EdgeInsets.symmetric(
                         vertical: 16.0,
@@ -354,7 +452,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2, // 文字間隔を少し広げる
+                        letterSpacing: 1.2,
                       ),
                     ),
                   ),
