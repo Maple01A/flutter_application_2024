@@ -97,74 +97,207 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.plant['name']),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Card(
-            elevation: 5,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+  // 画像を全画面表示するメソッド
+  void _showFullScreenImage() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              color: Colors.black.withOpacity(0.7),
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: Image.network(
-                      widget.plant['images'],
-                      height: MediaQuery.of(context).size.height * 0.4,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    widget.plant['name'],
-                    style: const TextStyle(
-                      fontSize: 28, 
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87, 
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    widget.plant['description'],
-                    style: const TextStyle(
-                      fontSize: 20, 
-                      color: Colors.black54, 
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 5),
-                    child: IconButton(
-                      icon: Icon(
-                        isFavorite ? Icons.favorite : Icons.favorite_border,
-                        color: isFavorite ? Colors.red[300] : null,
+                  Hero(
+                    tag: 'plantImage_${widget.plant['id']}',
+                    child: InteractiveViewer(
+                      boundaryMargin: EdgeInsets.all(20),
+                      minScale: 0.5,
+                      maxScale: 4.0,
+                      child: Image.network(
+                        widget.plant['images'],
+                        fit: BoxFit.contain,
                       ),
-                      onPressed: () {
-                        _toggleFavorite(widget.plant);
-                      },
+                    ),
+                  ),
+                  Positioned(
+                    top: 20,
+                    right: 20,
+                    child: IconButton(
+                      icon: Icon(Icons.close, color: Colors.white, size: 30),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
                 ],
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 背景色とアクセント色を設定
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.plant['name'],
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(
+              isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: isFavorite ? Colors.red[300] : null,
+            ),
+            onPressed: () => _toggleFavorite(widget.plant),
+            tooltip: isFavorite ? 'お気に入りから削除' : 'お気に入りに追加',
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 画像セクション - タップ可能
+            GestureDetector(
+              onTap: _showFullScreenImage,
+              child: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  Hero(
+                    tag: 'plantImage_${widget.plant['id']}',
+                    child: Container(
+                      height: MediaQuery.of(context).size.height * 0.4,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            spreadRadius: 1,
+                            blurRadius: 3,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Image.network(
+                        widget.plant['images'],
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  // タップを促すヒントアイコン
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.zoom_in, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            'タップして拡大',
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // 詳細情報セクション
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 名前
+                  Text(
+                    widget.plant['name'],
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  
+                  SizedBox(height: 10),
+                  
+                  // 日付があれば表示
+                  if (widget.plant['date'] != null) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                        SizedBox(width: 8),
+                        Text(
+                          '登録日: ${widget.plant['date']}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 20),
+                  ],
+                  
+                  // 説明
+                  Text(
+                    '説明',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Container(
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Text(
+                      widget.plant['description'] ?? '説明はありません',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _showDeleteConfirmationDialog,
-        child: const Icon(Icons.delete),
-        backgroundColor: Colors.red[300],
+        icon: Icon(Icons.delete),
+        label: Text('削除'),
+        backgroundColor: Colors.red[400],
       ),
     );
   }
