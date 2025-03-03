@@ -11,7 +11,7 @@ import 'package:flutter_application_2024/detail.dart';
 import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:intl/intl.dart' as intl; // パッケージを追加
+import 'package:intl/intl.dart' as intl; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -439,9 +439,10 @@ class _PlantListScreenState extends State<PlantListScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _navigateAddPlant,
-        child: const Icon(Icons.add),
+        icon: Icon(Icons.add),
+        label: Text('追加'),
       ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.only(top: 8.0),
