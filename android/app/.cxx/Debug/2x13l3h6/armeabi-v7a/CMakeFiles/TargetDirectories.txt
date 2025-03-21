@@ -1,0 +1,2 @@
+C:/Users/dendo/Downloads/flutter_application_2024 -2/android/app/.cxx/Debug/2x13l3h6/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/dendo/Downloads/flutter_application_2024 -2/android/app/.cxx/Debug/2x13l3h6/armeabi-v7a/CMakeFiles/rebuild_cache.dir
