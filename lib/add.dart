@@ -97,10 +97,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
   }
 
   // 画像選択処理
-  Future<void> _pickImage() async {
+  Future<void> _pickImage({required ImageSource source}) async {
     try {
       final pickedFile = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
+        source: source,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 85,
@@ -144,6 +144,52 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
 
       setState(() => _isLoading = false);
     }
+  }
+
+  // 画像取得方法の選択ダイアログを表示
+  void _showImageSourceDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '画像の選択方法',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 16),
+                ListTile(
+                  leading: Icon(Icons.camera_alt, color: Theme.of(context).colorScheme.primary),
+                  title: Text('カメラで撮影'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickImage(source: ImageSource.camera);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.photo_library, color: Theme.of(context).colorScheme.primary),
+                  title: Text('ギャラリーから選択'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickImage(source: ImageSource.gallery);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // Firebase Storageへのアップロード
@@ -472,7 +518,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                                 ElevatedButton.icon(
                                   onPressed: (_isUploading || _isLoading)
                                       ? null
-                                      : _pickImage,
+                                      : _showImageSourceDialog,
                                   label:
                                       Text(_image == null ? '写真を追加' : '写真を変更'),
                                   style: ElevatedButton.styleFrom(

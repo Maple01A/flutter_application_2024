@@ -913,7 +913,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
       itemCount: filteredPlants.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: widget.crossAxisCount,
-        childAspectRatio: 0.8, // アスペクト比を少し調整（写真のスペースを確保）
+        childAspectRatio: 0.8, // アスペクト比を少し調整
         crossAxisSpacing: 12, // 横の間隔を広げる
         mainAxisSpacing: 12, // 縦の間隔を広げる
       ),

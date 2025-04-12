@@ -49,5 +49,7 @@
 <dict>
     <key>NSAllowsArbitraryLoads</key><true/>
 </dict>
+	<key>NSCameraUsageDescription</key>
+	<string>写真撮影のためにカメラへのアクセス許可が必要です</string>
 </dict>
 </plist>
