@@ -152,46 +152,80 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
       print('イベント読み込み開始: plantId=$plantId');
       
-      final eventsSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('plantEvents')
-          .where('plantId', isEqualTo: plantId)
-          .orderBy('eventDate', descending: false)
-          .get();
-
-      print('取得したイベント数: ${eventsSnapshot.docs.length}');
-
-      final events = eventsSnapshot.docs
-          .map((doc) {
-            try {
-              return {
-                'id': doc.id,
-                'title': doc.data()['title'] ?? '',
-                'description': doc.data()['description'] ?? '',
-                'eventDate': doc.data()['eventDate'] != null
-                    ? (doc.data()['eventDate'] is Timestamp 
-                       ? (doc.data()['eventDate'] as Timestamp).toDate()
-                       : doc.data()['eventDate'])
-                    : DateTime.now(),
-                'eventType': doc.data()['eventType'] ?? '予定',
-              };
-            } catch (e) {
-              print('イベントデータの解析エラー: $e');
-              return null;
-            }
-          })
-          .where((event) => event != null)
-          .cast<Map<String, dynamic>>()
-          .toList();
-
-      if (mounted) {
-        setState(() {
-          _plantEvents = events;
-        });
+      try {
+        // ソート付きクエリを試行（インデックスが作成済みの場合はこれが成功）
+        final eventsSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('plantEvents')
+            .where('plantId', isEqualTo: plantId)
+            .orderBy('eventDate', descending: false)
+            .get();
+            
+        _processEventsSnapshot(eventsSnapshot);
+      } catch (indexError) {
+        // インデックスエラーが発生した場合、ソートなしでクエリを実行（一時的な対策）
+        print('インデックスエラー: $indexError');
+        print('ソートなしクエリで再試行中...');
+        
+        final eventsSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('plantEvents')
+            .where('plantId', isEqualTo: plantId)
+            .get();
+        
+        _processEventsSnapshot(eventsSnapshot);
       }
     } catch (e) {
       print('カレンダーイベント読み込みエラー: $e');
+    }
+  }
+
+  // イベントデータを処理する分離メソッド
+  void _processEventsSnapshot(QuerySnapshot eventsSnapshot) {
+    print('取得したイベント数: ${eventsSnapshot.docs.length}');
+
+    final events = eventsSnapshot.docs
+        .map((doc) {
+          try {
+            final eventData = doc.data() as Map<String, dynamic>;
+            final eventDate = eventData['eventDate'];
+            
+            // Timestampの変換処理を改善
+            DateTime convertedDate;
+            if (eventDate is Timestamp) {
+              convertedDate = eventDate.toDate();
+            } else if (eventDate is DateTime) {
+              convertedDate = eventDate;
+            } else {
+              convertedDate = DateTime.now();
+              print('不明な日付形式: $eventDate');
+            }
+            
+            return {
+              'id': doc.id,
+              'title': eventData['title'] ?? '',
+              'description': eventData['description'] ?? '',
+              'eventDate': convertedDate,
+              'eventType': eventData['eventType'] ?? '予定',
+            };
+          } catch (e) {
+            print('イベントデータの解析エラー: $e');
+            return null;
+          }
+        })
+        .where((event) => event != null)
+        .cast<Map<String, dynamic>>()
+        .toList();
+
+    // ローカルでソート（インデックスがなくてもUIはソートされる）
+    events.sort((a, b) => (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
+
+    if (mounted) {
+      setState(() {
+        _plantEvents = events;
+      });
     }
   }
 
@@ -773,6 +807,190 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
   // ===== カレンダーイベント管理 =====
 
+  Future<void> _addCalendarEvent(Map<String, dynamic> eventData) async {
+    try {
+      final String plantId = widget.plant['id'] ?? widget.plant['plantId'] ?? '';
+      if (plantId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('有効な植物IDがありません')),
+        );
+        return;
+      }
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showLoginPrompt();
+        return;
+      }
+
+      // 処理中のインジケータを表示
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 8),
+              Text('保存中...'),
+            ],
+          ),
+          duration: Duration(seconds: 1),
+        ),
+      );
+
+      // 日付の形式に注意
+      DateTime eventDate = eventData['eventDate'];
+      
+      // Firestoreに保存するデータ形式を厳密に定義
+      Map<String, dynamic> saveData = {
+        'plantId': plantId,
+        'plantName': widget.plant['name'] ?? '名称不明',
+        'title': eventData['title'],
+        'description': eventData['description'] ?? '',
+        // ここでDateTimeをそのまま保存すると問題が起きる可能性があるため、明示的にTimestampに変換
+        'eventDate': Timestamp.fromDate(eventDate),
+        'eventType': eventData['eventType'] ?? '予定',
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      // Firestoreに保存
+      final docRef = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('plantEvents')
+          .add(saveData);
+
+      print('イベント保存完了: ${docRef.id}');
+
+      // UIに即時反映（ローカルデータをより確実に処理）
+      setState(() {
+        _plantEvents.add({
+          'id': docRef.id,
+          'title': eventData['title'],
+          'description': eventData['description'] ?? '',
+          'eventDate': eventDate, // DateTime型で保持
+          'eventType': eventData['eventType'] ?? '予定',
+        });
+        
+        // ソートを確実に行う
+        _plantEvents.sort((a, b) => 
+            (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('イベントを追加しました'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // データの整合性を保つため、念のために全データを再読み込み
+      await Future.delayed(Duration(milliseconds: 500));
+      await _loadCalendarEvents();
+      
+    } catch (e) {
+      print('イベント追加エラー: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('エラーが発生しました: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _updateCalendarEvent(Map<String, dynamic> eventData) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showLoginPrompt();
+        return;
+      }
+
+      // 処理中のインジケータ
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 8),
+              Text('更新中...'),
+            ],
+          ),
+          duration: Duration(seconds: 1),
+        ),
+      );
+
+      // 日付の形式に注意
+      DateTime eventDate = eventData['eventDate'];
+
+      // Firestoreに保存するデータ形式を厳密に定義
+      Map<String, dynamic> updateData = {
+        'title': eventData['title'],
+        'description': eventData['description'] ?? '',
+        // 明示的にTimestampに変換
+        'eventDate': Timestamp.fromDate(eventDate),
+        'eventType': eventData['eventType'] ?? '予定',
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      // Firestoreでドキュメントを更新
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('plantEvents')
+          .doc(eventData['id'])
+          .update(updateData);
+
+      print('イベント更新完了: ${eventData['id']}');
+
+      // UIに即時反映
+      setState(() {
+        final index = _plantEvents.indexWhere((e) => e['id'] == eventData['id']);
+        if (index != -1) {
+          _plantEvents[index] = {
+            'id': eventData['id'],
+            'title': eventData['title'],
+            'description': eventData['description'] ?? '',
+            'eventDate': eventDate, // DateTime型で保持
+            'eventType': eventData['eventType'] ?? '予定',
+          };
+        }
+        
+        // ソートを確実に行う
+        _plantEvents.sort((a, b) => 
+            (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('イベントを更新しました'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // データの整合性を保つため、念のために全データを再読み込み
+      await Future.delayed(Duration(milliseconds: 500));
+      await _loadCalendarEvents();
+      
+    } catch (e) {
+      print('イベント更新エラー: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('更新に失敗しました: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _showAddEventDialog() {
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -1294,61 +1512,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     });
   }
 
-  Future<void> _addCalendarEvent(Map<String, dynamic> eventData) async {
-    try {
-      final String plantId = widget.plant['id'] ?? widget.plant['plantId'] ?? '';
-      if (plantId.isEmpty) return;
-
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        _showLoginPrompt();
-        return;
-      }
-
-      // 保存するデータの構造を_loadCalendarEventsと合わせる
-      final Map<String, dynamic> saveData = {
-        'plantId': plantId,
-        'plantName': widget.plant['name'] ?? '名称不明',
-        'title': eventData['title'],
-        'description': eventData['description'] ?? '',
-        'eventDate': eventData['eventDate'],
-        'eventType': eventData['eventType'] ?? '予定',
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      // Firestoreに保存
-      final eventDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('plantEvents')
-          .add(saveData);
-
-      // ローカルステートに追加
-      setState(() {
-        _plantEvents.add({
-          'id': eventDoc.id,
-          'title': eventData['title'],
-          'description': eventData['description'] ?? '',
-          'eventDate': eventData['eventDate'],
-          'eventType': eventData['eventType'] ?? '予定',
-        });
-        _plantEvents.sort((a, b) => (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('イベントを追加しました')),
-      );
-      
-      // 変更を確実に反映するために再読み込み
-      await _loadCalendarEvents();
-    } catch (e) {
-      print('イベント追加エラー: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('イベントの追加に失敗しました: $e')),
-      );
-    }
-  }
-
   Future<void> _deleteCalendarEvent(String eventId) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -1372,43 +1535,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       print('イベント削除エラー: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('イベントの削除に失敗しました')),
-      );
-    }
-  }
-
-  Future<void> _updateCalendarEvent(Map<String, dynamic> eventData) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('plantEvents')
-          .doc(eventData['id'])
-          .update({
-        'title': eventData['title'],
-        'description': eventData['description'],
-        'eventDate': eventData['eventDate'],
-        'eventType': eventData['eventType'],
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      setState(() {
-        final index = _plantEvents.indexWhere((e) => e['id'] == eventData['id']);
-        if (index != -1) {
-          _plantEvents[index] = eventData;
-        }
-        _plantEvents.sort((a, b) => (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('イベントを更新しました')),
-      );
-    } catch (e) {
-      print('イベント更新エラー: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('イベントの更新に失敗しました')),
       );
     }
   }
