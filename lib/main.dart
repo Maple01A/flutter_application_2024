@@ -13,6 +13,7 @@ import 'package:flutter_application_2024/signup.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'explore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1011,7 +1012,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                               child: Icon(
                                 Icons.event_available,
                                 color: Colors.green,
-                                size: 16,
+                                size: 28,
                               ),
                             ),
                           Flexible(
