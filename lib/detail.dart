@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shimmer/shimmer.dart';
 
 class PlantDetailScreen extends StatefulWidget {
   final Map<String, dynamic> plant;
@@ -925,6 +927,116 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
   // ===== 画像表示関連 =====
 
+  Widget _buildImageSection(dynamic imageUrl) {
+    return GestureDetector(
+      onTap: imageUrl != null ? _showFullScreenImage : null,
+      child: Stack(
+        alignment: Alignment.bottomRight,
+        children: [
+          Hero(
+            tag: 'plantImage_${widget.plant['id'] ?? "unknown"}',
+            child: Container(
+              height: MediaQuery.of(context).size.height * 0.4,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    spreadRadius: 1,
+                    blurRadius: 3,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: imageUrl != null
+                  ? FadeInImage.assetNetwork(
+                      placeholder:
+                          'assets/images/plant_loading.png', // プレースホルダー画像（追加必要）
+                      image: imageUrl,
+                      fit: BoxFit.cover,
+                      fadeInDuration: Duration(milliseconds: 300),
+                      fadeOutDuration: Duration(milliseconds: 100),
+                      imageErrorBuilder: (context, error, stackTrace) {
+                        print('画像読み込みエラー: $error');
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.broken_image,
+                                  size: 80, color: Colors.grey),
+                              SizedBox(height: 8),
+                              Text(
+                                '画像を読み込めませんでした',
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      placeholderErrorBuilder: (context, error, stackTrace) {
+                        // プレースホルダー画像が読み込めない場合
+                        return _buildSkeletonLoader();
+                      },
+                      imageScale: 1.0, // 解像度スケール
+                      // Removed unsupported cacheWidth and cacheHeight parameters
+                    )
+                  : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.image_not_supported,
+                              size: 80, color: Colors.grey),
+                          SizedBox(height: 8),
+                          Text(
+                            '画像がありません',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+          if (imageUrl != null)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.zoom_in, color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      'タップして拡大',
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonLoader() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      period: Duration(milliseconds: 1500), // アニメーション速度
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Colors.white,
+      ),
+    );
+  }
+
   void _showFullScreenImage() {
     final imageUrl = widget.plant['images'];
     if (imageUrl == null) return;
@@ -940,7 +1052,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
             child: Container(
               width: double.infinity,
               height: double.infinity,
-              color: Colors.black.withOpacity(0.7),
+              color: Colors.black.withOpacity(0.9),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -950,10 +1062,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                       boundaryMargin: EdgeInsets.all(20),
                       minScale: 0.5,
                       maxScale: 4.0,
-                      child: Image.network(
-                        imageUrl,
+                      child: CachedNetworkImage(
+                        imageUrl: imageUrl,
                         fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
+                        placeholder: (context, url) => _buildFullscreenLoader(),
+                        errorWidget: (context, url, error) {
                           return Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -970,6 +1083,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                             ),
                           );
                         },
+                        fadeInDuration: Duration(milliseconds: 300),
+                        memCacheWidth:
+                            MediaQuery.of(context).size.width.toInt(),
                       ),
                     ),
                   ),
@@ -987,6 +1103,32 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildFullscreenLoader() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 60,
+            height: 60,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 3,
+            ),
+          ),
+          SizedBox(height: 16),
+          Text(
+            '画像を読み込み中...',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1088,106 +1230,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         children: [
           _buildImageSection(imageUrl),
           _buildInfoSection(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildImageSection(dynamic imageUrl) {
-    return GestureDetector(
-      onTap: imageUrl != null ? _showFullScreenImage : null,
-      child: Stack(
-        alignment: Alignment.bottomRight,
-        children: [
-          Hero(
-            tag: 'plantImage_${widget.plant['id'] ?? "unknown"}',
-            child: Container(
-              height: MediaQuery.of(context).size.height * 0.4,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    spreadRadius: 1,
-                    blurRadius: 3,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: imageUrl != null
-                  ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      cacheHeight:
-                          (MediaQuery.of(context).size.height * 0.4).toInt(),
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        print('画像読み込みエラー: $error');
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.broken_image,
-                                  size: 80, color: Colors.grey),
-                              SizedBox(height: 8),
-                              Text(
-                                '画像を読み込めませんでした',
-                                style: TextStyle(color: Colors.grey[600]),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    )
-                  : Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.image_not_supported,
-                              size: 80, color: Colors.grey),
-                          SizedBox(height: 8),
-                          Text(
-                            '画像がありません',
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                    ),
-            ),
-          ),
-          if (imageUrl != null)
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.zoom_in, color: Colors.white, size: 16),
-                    SizedBox(width: 4),
-                    Text(
-                      'タップして拡大',
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );

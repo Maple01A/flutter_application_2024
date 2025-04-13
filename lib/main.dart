@@ -12,6 +12,7 @@ import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_application_2024/signup.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -142,6 +143,40 @@ class _MyAppState extends State<MyApp> {
       print('ユーザー名をFirestoreに保存しました: $name');
     } catch (e) {
       print('ユーザー名の保存に失敗しました: $e');
+    }
+  }
+
+  // ログアウト機能を強化
+  Future<void> _logout() async {
+    try {
+      // Firebaseからログアウト
+      await FirebaseAuth.instance.signOut();
+      
+      // 保存された認証情報をすべて削除
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('user_email');
+      await prefs.remove('user_password');
+      await prefs.setBool('google_login', false);
+      await prefs.setBool('anonymous_login', false);
+      
+      // キャッシュもクリア
+      await prefs.remove('cachedUserName');
+      
+      // アプリのユーザー名をリセット
+      setState(() {
+        MyApp.userName = "ゲスト";
+      });
+      
+      // ログイン画面へ戻る (すべてのルートをクリア)
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    } catch (e) {
+      print('ログアウトエラー: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ログアウトに失敗しました。もう一度お試しください。'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -802,10 +837,51 @@ class _PlantListScreenState extends State<PlantListScreen> {
     );
 
     if (shouldLogout == true) {
-      await FirebaseAuth.instance.signOut();
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-    } else {
-      Navigator.of(context).pop(); // ドロワーを閉じる
+      try {
+        // ローディング表示
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+
+        // Firebase認証からログアウト
+        await FirebaseAuth.instance.signOut();
+        
+        // SharedPreferencesの認証情報をクリア
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('user_email');
+        await prefs.remove('user_password');
+        await prefs.setBool('google_login', false);
+        await prefs.setBool('anonymous_login', false);
+        
+        // アプリのユーザー名をリセット
+        MyApp.userName = "ゲスト";
+        
+        // ローディングを閉じる
+        Navigator.of(context).pop();
+        
+        // 確実にログイン画面に戻る
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      } catch (e) {
+        // エラー発生時
+        print('ログアウトエラー: $e');
+        
+        // ローディングが表示されていれば閉じる
+        if (Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
+        
+        // エラーメッセージを表示
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ログアウト中にエラーが発生しました。もう一度お試しください。'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

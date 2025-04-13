@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:developer';
 import 'main.dart';
 
@@ -16,6 +17,134 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isEmailValid = true;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // アプリ起動時に自動ログインを試みる
+    _checkSavedLogin();
+  }
+
+  // 保存されたログイン情報を確認
+  Future<void> _checkSavedLogin() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEmail = prefs.getString('user_email');
+      final savedPassword = prefs.getString('user_password');
+
+      // 匿名ユーザーとしてログイン済みかチェック
+      if (prefs.getBool('anonymous_login') == true) {
+        if (_auth.currentUser != null && _auth.currentUser!.isAnonymous) {
+          log("匿名ユーザーとして自動ログイン");
+          MyApp.userName = "ゲストユーザー";
+          setState(() => _isLoading = false);
+          Navigator.pushReplacementNamed(context, '/home');
+          return;
+        }
+      }
+
+      // Google認証で既にログイン済みかチェック
+      if (prefs.getBool('google_login') == true) {
+        final currentUser = _auth.currentUser;
+        if (currentUser != null && !currentUser.isAnonymous) {
+          try {
+            // Firestoreからユーザー情報を取得
+            final userDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .get();
+
+            if (userDoc.exists && userDoc.data()?['name'] != null) {
+              MyApp.userName = userDoc.data()?['name'];
+            } else {
+              MyApp.userName = currentUser.displayName ??
+                  currentUser.email?.split('@')[0] ??
+                  "ユーザー";
+            }
+
+            log("Google認証による自動ログイン成功: ${currentUser.uid}");
+            setState(() => _isLoading = false);
+            Navigator.pushReplacementNamed(context, '/home');
+            return;
+          } catch (e) {
+            log("保存されたGoogle認証情報の取得エラー: $e");
+          }
+        }
+      }
+
+      // メールとパスワードが保存されている場合は自動ログイン
+      if (savedEmail != null && savedPassword != null) {
+        log("保存されたログイン情報を発見、自動ログインを試みます");
+
+        try {
+          final UserCredential userCredential =
+              await _auth.signInWithEmailAndPassword(
+            email: savedEmail,
+            password: savedPassword,
+          );
+
+          if (userCredential.user != null) {
+            // Firestoreからユーザー情報を取得
+            final userDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(userCredential.user!.uid)
+                .get();
+
+            if (userDoc.exists && userDoc.data()?['name'] != null) {
+              MyApp.userName = userDoc.data()?['name'];
+            } else {
+              MyApp.userName =
+                  userCredential.user!.email?.split('@')[0] ?? "ユーザー";
+            }
+
+            log("保存された認証情報による自動ログイン成功: ${userCredential.user?.uid}");
+            Navigator.pushReplacementNamed(context, '/home');
+            return;
+          }
+        } catch (e) {
+          log("自動ログイン失敗: $e");
+          // 認証情報が無効な場合は保存データを削除
+          await prefs.remove('user_email');
+          await prefs.remove('user_password');
+        }
+      }
+    } catch (e) {
+      log("自動ログインチェックエラー: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // ログイン情報を保存する関数
+  Future<void> _saveLoginInfo(String email, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_email', email);
+    await prefs.setString('user_password', password);
+    await prefs.setBool('anonymous_login', false);
+    await prefs.setBool('google_login', false);
+    log("ログイン情報を保存しました");
+  }
+
+  // Googleログイン情報を保存
+  Future<void> _saveGoogleLoginInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('google_login', true);
+    await prefs.setBool('anonymous_login', false);
+    await prefs.remove('user_email');
+    await prefs.remove('user_password');
+    log("Googleログイン情報を保存しました");
+  }
+
+  // 匿名ログイン情報を保存
+  Future<void> _saveAnonymousLoginInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('anonymous_login', true);
+    await prefs.setBool('google_login', false);
+    await prefs.remove('user_email');
+    await prefs.remove('user_password');
+    log("匿名ログイン情報を保存しました");
+  }
 
   Future<void> _signInWithGoogle() async {
     try {
@@ -51,7 +180,8 @@ class _LoginScreenState extends State<LoginScreen> {
           'lastLogin': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }
-
+      // Googleログイン情報の保存
+      await _saveGoogleLoginInfo();
       MyApp.userName = displayName ?? googleUser.displayName ?? "ユーザー";
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
@@ -87,6 +217,9 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text,
         password: _passwordController.text,
       );
+
+      // ログイン情報を保存
+      await _saveLoginInfo(_emailController.text, _passwordController.text);
 
       // ログイン成功したユーザーの情報をログ出力
       log("メールでログイン成功: ${userCredential.user?.uid}");
@@ -198,6 +331,9 @@ class _LoginScreenState extends State<LoginScreen> {
       // デバッグログ
       print("匿名ログイン成功: $anonymousUid");
 
+      // 匿名ログイン情報を保存
+      await _saveAnonymousLoginInfo();
+
       // Firestoreにユーザー情報を保存
       try {
         await FirebaseFirestore.instance
@@ -262,6 +398,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text("ログイン状態を確認中...")
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text("ログイン"),
