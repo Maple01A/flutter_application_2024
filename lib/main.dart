@@ -304,6 +304,9 @@ class _PlantListScreenState extends State<PlantListScreen> {
   // 画像URLキャッシュを追加（IDをキーとしてURLを保存）
   final Map<String, String> _imageUrlCache = {};
 
+  // 当日のイベントキャッシュ (plantId -> イベントあり)
+  final Map<String, bool> _todayEventCache = {};
+
   // 既存の変数はそのまま
   static const double _cardBorderRadius = 15.0;
   List<Map<String, dynamic>> plants = [];
@@ -408,11 +411,18 @@ class _PlantListScreenState extends State<PlantListScreen> {
       _isLoading = true;
       plants = [];
       filteredPlants = [];
+      _todayEventCache.clear(); // キャッシュをクリア
     });
 
     try {
       // 直接Firebaseから植物データを読み込む
       await _loadFirebasePlants();
+
+      // イベント情報を一括で事前取得
+      if (plants.isNotEmpty) {
+        List<String> plantIds = plants.map((p) => p['id'].toString()).toList();
+        await _prefetchTodayEvents(plantIds);
+      }
 
       // 並び替えを適用
       _sortPlants();
@@ -519,6 +529,51 @@ class _PlantListScreenState extends State<PlantListScreen> {
               'https://via.placeholder.com/150?text=No+Image';
         }
       }
+    }
+  }
+
+  // 一括でイベント情報を事前に取得するメソッド
+  Future<void> _prefetchTodayEvents(List<String> plantIds) async {
+    if (plantIds.isEmpty) return;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // 今日の日付範囲
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+      final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
+
+      // plantIdsが10個以上の場合、バッチ処理が必要
+      // Firestoreの'whereIn'は一度に最大10個までの値しかサポートしていないため
+      List<List<String>> batches = [];
+      for (int i = 0; i < plantIds.length; i += 10) {
+        final end = (i + 10 < plantIds.length) ? i + 10 : plantIds.length;
+        batches.add(plantIds.sublist(i, end));
+      }
+
+      // 各バッチを処理
+      for (var batchIds in batches) {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('plantEvents')
+            .where('plantId', whereIn: batchIds)
+            .where('eventDate', isGreaterThanOrEqualTo: startOfDay)
+            .where('eventDate', isLessThanOrEqualTo: endOfDay)
+            .get();
+
+        // 結果をキャッシュに格納
+        for (var doc in querySnapshot.docs) {
+          String plantId = doc.data()['plantId'];
+          _todayEventCache[plantId] = true;
+        }
+      }
+
+      print('今日のイベント情報を${_todayEventCache.length}件キャッシュしました');
+    } catch (e) {
+      print('イベント一括取得エラー: $e');
     }
   }
 
@@ -886,24 +941,8 @@ class _PlantListScreenState extends State<PlantListScreen> {
   }
 
   Widget _buildPlantCard(Map plant) {
-
-    bool hasTodayEvent = false;
-
-    // 今日の日付を取得（時間部分は無視）
-    final today = DateTime(
-      DateTime.now().year,
-      DateTime.now().month,
-      DateTime.now().day,
-    );
-
-    // Firestoreから当日のイベントを確認するロジックを追加
-    _checkTodayEvents(plant['id']).then((hasEvent) {
-      if (mounted && hasEvent != hasTodayEvent) {
-        setState(() {
-          hasTodayEvent = hasEvent;
-        });
-      }
-    });
+    // キャッシュから取得（個別クエリを発行せず）
+    bool hasTodayEvent = _todayEventCache[plant['id']] ?? false;
 
     // カードの中身を構築
     return Card(
@@ -962,15 +1001,32 @@ class _PlantListScreenState extends State<PlantListScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        plant['name']?.toString() ?? '名称不明',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // 今日のイベントがある場合のアイコンを表示（テキストの左）
+                          if (hasTodayEvent)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4.0),
+                              child: Icon(
+                                Icons.event_available,
+                                color: Colors.green,
+                                size: 16,
+                              ),
+                            ),
+                          Flexible(
+                            child: Text(
+                              plant['name']?.toString() ?? '名称不明',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                       if (plant['date'] != null)
                         Text(
@@ -987,59 +1043,33 @@ class _PlantListScreenState extends State<PlantListScreen> {
               ),
             ],
           ),
-
-          // 当日イベントがある場合のマーカーを表示
-          if (hasTodayEvent)
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Container(
-                padding: EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(Icons.event_available, color: Colors.white, size: 18),
-              ),
-            ),
         ],
       ),
     );
   }
 
-  // 当日のイベントがあるかどうかを確認するメソッドを追加
-  Future<bool> _checkTodayEvents(String plantId) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return false;
+  // 詳細画面への遷移処理を修正
+  Future<void> _navigateToDetail(Map<String, dynamic> plant) async {
+    // ディープコピーを作成
+    Map<String, dynamic> plantCopy = Map<String, dynamic>.from(plant);
 
-      // 今日の日付範囲（00:00:00〜23:59:59）
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-      final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
+    // 詳細画面に遷移
+    final needsReload = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlantDetailScreen(plant: plantCopy),
+      ),
+    );
 
-      // Firestoreから当日のイベントを確認
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('plantEvents')
-          .where('plantId', isEqualTo: plantId)
-          .where('eventDate', isGreaterThanOrEqualTo: startOfDay)
-          .where('eventDate', isLessThanOrEqualTo: endOfDay)
-          .limit(1) // 1件あればよい
-          .get();
-
-      return querySnapshot.docs.isNotEmpty;
-    } catch (e) {
-      print('当日イベント確認エラー: $e');
-      return false;
+    // 詳細画面で変更があった場合は全データ再読み込み
+    if (needsReload == true) {
+      _forceReload = true;
+      await loadPlantData();
+    } else {
+      // 変更がなくても、イベント情報だけは最新化
+      List<String> plantIds = plants.map((p) => p['id'].toString()).toList();
+      await _prefetchTodayEvents(plantIds);
+      setState(() {}); // UIを更新
     }
   }
 
@@ -1067,26 +1097,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
         );
       },
     );
-  }
-
-  // 詳細画面への遷移処理を修正
-  Future<void> _navigateToDetail(Map<String, dynamic> plant) async {
-    // ディープコピーを作成
-    Map<String, dynamic> plantCopy = Map<String, dynamic>.from(plant);
-
-    // 詳細画面に遷移
-    final needsReload = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PlantDetailScreen(plant: plantCopy),
-      ),
-    );
-
-    // 詳細画面で変更があった場合のみ再読み込み
-    if (needsReload == true) {
-      _forceReload = true;
-      await loadPlantData();
-    }
   }
 }
 

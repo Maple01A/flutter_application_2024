@@ -972,7 +972,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('イベントを更新しました'),
-          backgroundColor: Colors.green,
         ),
       );
 
