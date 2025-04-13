@@ -886,7 +886,24 @@ class _PlantListScreenState extends State<PlantListScreen> {
   }
 
   Widget _buildPlantCard(Map plant) {
-    bool needsWatering = false;
+
+    bool hasTodayEvent = false;
+
+    // 今日の日付を取得（時間部分は無視）
+    final today = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+
+    // Firestoreから当日のイベントを確認するロジックを追加
+    _checkTodayEvents(plant['id']).then((hasEvent) {
+      if (mounted && hasEvent != hasTodayEvent) {
+        setState(() {
+          hasTodayEvent = hasEvent;
+        });
+      }
+    });
 
     // カードの中身を構築
     return Card(
@@ -913,8 +930,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                             imageUrl: plant['images'].toString(),
                             fit: BoxFit.cover,
                             placeholder: (context, url) => Center(
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2.0),
+                              child: CircularProgressIndicator(strokeWidth: 2.0),
                             ),
                             errorWidget: (context, url, error) {
                               print('画像読み込みエラー: $error');
@@ -930,8 +946,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                         : Container(
                             color: Colors.grey[200],
                             child: Center(
-                              child: Icon(Icons.image,
-                                  size: 50, color: Colors.grey),
+                              child: Icon(Icons.image, size: 50, color: Colors.grey),
                             ),
                           ),
                   ),
@@ -972,9 +987,60 @@ class _PlantListScreenState extends State<PlantListScreen> {
               ),
             ],
           ),
+
+          // 当日イベントがある場合のマーカーを表示
+          if (hasTodayEvent)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(Icons.event_available, color: Colors.white, size: 18),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  // 当日のイベントがあるかどうかを確認するメソッドを追加
+  Future<bool> _checkTodayEvents(String plantId) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return false;
+
+      // 今日の日付範囲（00:00:00〜23:59:59）
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+      final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
+
+      // Firestoreから当日のイベントを確認
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('plantEvents')
+          .where('plantId', isEqualTo: plantId)
+          .where('eventDate', isGreaterThanOrEqualTo: startOfDay)
+          .where('eventDate', isLessThanOrEqualTo: endOfDay)
+          .limit(1) // 1件あればよい
+          .get();
+
+      return querySnapshot.docs.isNotEmpty;
+    } catch (e) {
+      print('当日イベント確認エラー: $e');
+      return false;
+    }
   }
 
   // GridViewのビルダーを分離

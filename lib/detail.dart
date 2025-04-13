@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:table_calendar/table_calendar.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 class PlantDetailScreen extends StatefulWidget {
   final Map<String, dynamic> plant;
@@ -61,26 +63,26 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
   // フィールド管理
   Map<String, TextEditingController> fieldControllers = {};
-  List<String> defaultFields = ['description', 'watering', 'fertilizer'];
+  List<String> defaultFields = ['description', 'height', 'width'];
   List<String> customFields = [];
   final TextEditingController _newFieldNameController = TextEditingController();
-  final TextEditingController _newFieldValueController =
-      TextEditingController();
+  final TextEditingController _newFieldValueController = TextEditingController();
 
-  // 水やりリマインダー
-  DateTime? _nextWateringDate;
-  String _wateringNote = '';
-  bool _hasWateringReminder = false;
+  // カレンダー連携用の変数
+  List<Map<String, dynamic>> _plantEvents = [];
 
   // お気に入り関連
   String? _favoriteId;
 
   // 表示名マッピング
-  final Map<String, String> fieldDisplayNames = {'description': '説明'};
+  final Map<String, String> fieldDisplayNames = {'description': '説明', 'height': '高さ', 'width': '株張り'};
 
   @override
   void initState() {
     super.initState();
+    // 日本語のロケールを初期化
+    initializeDateFormatting('ja_JP', null);
+    
     _initializeData();
 
     // お気に入りの初期状態を設定
@@ -120,8 +122,8 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // 水やりリマインダー情報の取得
-        _loadReminderData();
+        // カレンダーイベントの読み込み
+        await _loadCalendarEvents();
 
         // カスタムフィールドを抽出
         _extractCustomFields();
@@ -134,22 +136,66 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     }
   }
 
-  void _loadReminderData() {
-    if (widget.plant.containsKey('wateringReminder') &&
-        widget.plant['wateringReminder'] != null) {
-      final reminderData =
-          widget.plant['wateringReminder'] as Map<String, dynamic>;
-      setState(() {
-        _nextWateringDate = DateTime.parse(reminderData['nextWateringDate']);
-        _wateringNote = reminderData['wateringNote'] ?? '';
-        _hasWateringReminder = true;
-      });
+  Future<void> _loadCalendarEvents() async {
+    try {
+      final String plantId = widget.plant['id'] ?? widget.plant['plantId'] ?? '';
+      if (plantId.isEmpty) {
+        print('有効なplantIdがありません');
+        return;
+      }
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        print('ユーザーがログインしていません');
+        return;
+      }
+
+      print('イベント読み込み開始: plantId=$plantId');
+      
+      final eventsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('plantEvents')
+          .where('plantId', isEqualTo: plantId)
+          .orderBy('eventDate', descending: false)
+          .get();
+
+      print('取得したイベント数: ${eventsSnapshot.docs.length}');
+
+      final events = eventsSnapshot.docs
+          .map((doc) {
+            try {
+              return {
+                'id': doc.id,
+                'title': doc.data()['title'] ?? '',
+                'description': doc.data()['description'] ?? '',
+                'eventDate': doc.data()['eventDate'] != null
+                    ? (doc.data()['eventDate'] is Timestamp 
+                       ? (doc.data()['eventDate'] as Timestamp).toDate()
+                       : doc.data()['eventDate'])
+                    : DateTime.now(),
+                'eventType': doc.data()['eventType'] ?? '予定',
+              };
+            } catch (e) {
+              print('イベントデータの解析エラー: $e');
+              return null;
+            }
+          })
+          .where((event) => event != null)
+          .cast<Map<String, dynamic>>()
+          .toList();
+
+      if (mounted) {
+        setState(() {
+          _plantEvents = events;
+        });
+      }
+    } catch (e) {
+      print('カレンダーイベント読み込みエラー: $e');
     }
   }
 
-  // _extractCustomFields メソッドを修正
   void _extractCustomFields() {
-    // システムやメタデータフィールドのリスト
     final systemFields = [
       'id',
       'plantId',
@@ -158,7 +204,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       'imageUrl',
       'date',
       'userId',
-      'wateringReminder',
       'createdAt',
       'updatedAt',
       'addedAt',
@@ -203,7 +248,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     setState(() => _isCheckingFavorite = true);
 
     try {
-      // favoriteIdがあれば、そのドキュメントを確認
       if (widget.plant['favoriteId'] != null) {
         final favoriteId = widget.plant['favoriteId'].toString();
         final docSnapshot = await FirebaseFirestore.instance
@@ -222,7 +266,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         }
       }
 
-      // plantIdで検索
       final String plantId =
           widget.plant['plantId'] ?? widget.plant['id'] ?? '';
       if (plantId.isEmpty) {
@@ -335,17 +378,14 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       'addedAt': FieldValue.serverTimestamp(),
     };
 
-    // 画像URLがあれば追加
     if (widget.plant['images'] != null) {
       favoriteData['images'] = widget.plant['images'];
     }
 
-    // 説明があれば追加
     if (widget.plant['description'] != null) {
       favoriteData['description'] = widget.plant['description'];
     }
 
-    // 日付があれば追加
     if (widget.plant['date'] != null) {
       favoriteData['date'] = widget.plant['date'];
     }
@@ -379,29 +419,58 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
   // ===== 編集機能 =====
 
-  void _toggleEditMode() {
-    setState(() {
-      isEditing = !isEditing;
-      if (!isEditing) {
-        _saveChanges();
+  void _toggleEditMode() async {
+    if (isEditing) {
+      // 編集モードから通常モードへの切り替え時に保存
+      final success = await _saveChanges();
+      if (success) {
+        setState(() {
+          isEditing = false;
+        });
       }
-    });
+    } else {
+      // 通常モードから編集モードへの切り替え
+      setState(() {
+        isEditing = true;
+      });
+    }
   }
 
-  Future<void> _saveChanges() async {
+  Future<bool> _saveChanges() async {
     final String plantId = widget.plant['id'] ?? '';
     if (plantId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('有効な植物IDがありません')),
       );
-      return;
+      return false;
     }
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       _showLoginPrompt();
-      return;
+      return false;
     }
+
+    // 保存中の表示
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('変更を保存中...'),
+          ],
+        ),
+        duration: Duration(seconds: 1),
+      ),
+    );
 
     try {
       Map<String, dynamic> updatedData = {
@@ -410,6 +479,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
       fieldControllers.forEach((field, controller) {
         updatedData[field] = controller.text;
+        widget.plant[field] = controller.text; // すぐにウィジェットデータも更新
       });
 
       await FirebaseFirestore.instance
@@ -417,16 +487,16 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           .doc(plantId)
           .update(updatedData);
 
-      widget.plant.addAll(updatedData);
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('変更を保存しました')),
       );
+      return true;
     } catch (e) {
       print('Firebase 保存エラー: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('変更の保存に失敗しました')),
       );
+      return false;
     }
   }
 
@@ -447,7 +517,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   // ===== カスタムフィールド管理 =====
 
   void _addNewField() {
-    final List<String> suggestedFields = ['品種名', '高さ', '株張り', '形質', '時期'];
+    final List<String> suggestedFields = ['品種名', '高さ', '株張り', '形質', '時期', '育成環境', '入手先'];
 
     showDialog(
       context: context,
@@ -498,10 +568,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                   final fieldValue = _newFieldValueController.text.trim();
 
                   if (fieldName.isNotEmpty) {
-                    _saveNewField(fieldName, fieldValue);
+                    Navigator.of(context).pop(); // ダイアログを閉じる
+                    _saveNewField(fieldName, fieldValue); // 保存処理を実行
                   }
-
-                  Navigator.of(context).pop();
                 },
                 child: Text('追加'),
               ),
@@ -509,7 +578,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           );
         });
       },
-    );
+    ).then((_) {
+      // ダイアログを閉じた後にフィールドをクリア
+      _newFieldNameController.clear();
+      _newFieldValueController.clear();
+    });
   }
 
   Future<void> _saveNewField(String fieldName, String fieldValue) async {
@@ -521,25 +594,69 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       return;
     }
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('plants')
-          .doc(plantId)
-          .update({fieldName: fieldValue});
+    // 保存中の表示
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('新しい項目を追加中...'),
+          ],
+        ),
+        duration: Duration(seconds: 1),
+      ),
+    );
 
+    try {
+      // まず状態を更新して即時反映
       setState(() {
         customFields.add(fieldName);
         fieldControllers[fieldName] = TextEditingController(text: fieldValue);
         widget.plant[fieldName] = fieldValue;
       });
 
+      // その後、Firestoreに保存
+      await FirebaseFirestore.instance
+          .collection('plants')
+          .doc(plantId)
+          .update({fieldName: fieldValue});
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('新しい項目を追加しました')),
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 12),
+              Text('新しい項目を追加しました'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+        ),
       );
     } catch (e) {
       print('カスタムフィールド保存エラー: $e');
+      
+      // エラー時は状態を元に戻す
+      setState(() {
+        customFields.remove(fieldName);
+        fieldControllers[fieldName]?.dispose();
+        fieldControllers.remove(fieldName);
+        widget.plant.remove(fieldName);
+      });
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('項目の追加に失敗しました')),
+        SnackBar(
+          content: Text('項目の追加に失敗しました: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -561,7 +678,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                 _deleteFieldFromFirebase(fieldName);
                 Navigator.pop(context);
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red[300]),
               child: Text('削除'),
             ),
           ],
@@ -574,274 +691,724 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     final String plantId = widget.plant['id'] ?? '';
     if (plantId.isEmpty) return;
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('plants')
-          .doc(plantId)
-          .update({fieldName: FieldValue.delete()});
+    // 削除中の表示
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('項目を削除中...'),
+          ],
+        ),
+        duration: Duration(seconds: 1),
+      ),
+    );
 
+    try {
+      // まず状態を更新して即時反映
       setState(() {
-        customFields.remove(fieldName);
-        fieldControllers[fieldName]?.dispose();
-        fieldControllers.remove(fieldName);
-        widget.plant.remove(fieldName);
+        if (customFields.contains(fieldName)) {
+          customFields.remove(fieldName);
+        }
+        
+        // height や width の場合はdefaultFieldsからは削除しないが、値をクリアする
+        if (fieldName == 'height' || fieldName == 'width') {
+          fieldControllers[fieldName]?.text = '';
+          widget.plant[fieldName] = '';
+        } else {
+          fieldControllers[fieldName]?.dispose();
+          fieldControllers.remove(fieldName);
+          widget.plant.remove(fieldName);
+        }
       });
 
+      // Firestoreにも反映
+      if (fieldName == 'height' || fieldName == 'width') {
+        // 標準フィールドの場合は空文字列を設定
+        await FirebaseFirestore.instance
+            .collection('plants')
+            .doc(plantId)
+            .update({fieldName: ''});
+      } else {
+        // カスタムフィールドの場合はフィールド自体を削除
+        await FirebaseFirestore.instance
+            .collection('plants')
+            .doc(plantId)
+            .update({fieldName: FieldValue.delete()});
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('項目を削除しました')),
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 12),
+              Text('項目を削除しました'),
+            ],
+          ),
+        ),
       );
     } catch (e) {
       print('フィールド削除エラー: $e');
+      
+      // エラー時は元の状態に戻す
+      _initializeData(); // 全データを再取得
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('項目の削除に失敗しました')),
+        SnackBar(
+          content: Text('項目の削除に失敗しました: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
 
-  // ===== リマインダー関連 =====
+  // ===== カレンダーイベント管理 =====
 
-  void _showWateringReminderDialog() {
-    DateTime selectedDate =
-        _nextWateringDate ?? DateTime.now().add(Duration(days: 7));
-    TimeOfDay selectedTime = TimeOfDay.fromDateTime(selectedDate);
-    TextEditingController noteController =
-        TextEditingController(text: _wateringNote);
-
+  void _showAddEventDialog() {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    
+    // 現在の日付を初期選択
+    DateTime selectedDate = DateTime.now();
+    
+    // カレンダーの表示月
+    DateTime focusedDay = DateTime.now();
+    
+    // 既存のイベントをカレンダーマーカー用に変換
+    Map<DateTime, List<Map<String, dynamic>>> events = {};
+    
+    for (var event in _plantEvents) {
+      final eventDate = event['eventDate'] as DateTime;
+      final dateKey = DateTime(eventDate.year, eventDate.month, eventDate.day);
+      
+      if (events[dateKey] == null) {
+        events[dateKey] = [];
+      }
+      
+      events[dateKey]!.add({
+        'id': event['id'],
+        'title': event['title'],
+      });
+    }
+    
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
-            return AlertDialog(
-              title: Text('リマインダーの設定'),
-              content: SingleChildScrollView(
+            // カレンダー用のイベントマーカー取得関数
+            List<Map<String, dynamic>> _getEventsForDay(DateTime day) {
+              final dateKey = DateTime(day.year, day.month, day.day);
+              return events[dateKey] ?? [];
+            }
+            
+            return Dialog(
+              insetPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Container(
+                width: double.maxFinite,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('${widget.plant['name']}の予定日を設定します'),
-                    SizedBox(height: 20),
-
-                    // 日付選択UI
-                    Text('日付', style: TextStyle(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8),
-                    _buildDatePicker(selectedDate, (picked) {
-                      setState(() {
-                        selectedDate = DateTime(
-                          picked.year,
-                          picked.month,
-                          picked.day,
-                          selectedTime.hour,
-                          selectedTime.minute,
-                        );
-                      });
-                    }),
-
-                    SizedBox(height: 20),
-                    Text('時刻', style: TextStyle(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8),
-                    _buildTimePicker(selectedTime, (picked) {
-                      setState(() {
-                        selectedTime = picked;
-                        selectedDate = DateTime(
-                          selectedDate.year,
-                          selectedDate.month,
-                          selectedDate.day,
-                          picked.hour,
-                          picked.minute,
-                        );
-                      });
-                    }),
-
-                    SizedBox(height: 20),
-                    Text('メモ（任意）',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8),
-                    TextField(
-                      controller: noteController,
-                      decoration: InputDecoration(
-                        hintText: '例：たっぷり水を与える',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 2,
-                    ),
-
-                    if (_hasWateringReminder) ...[
-                      SizedBox(height: 20),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).pop('delete');
-                        },
-                        icon: Icon(Icons.delete_outline, color: Colors.red),
-                        label: Text('リマインダーを削除',
-                            style: TextStyle(color: Colors.red)),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: Colors.red),
+                    // ヘッダー
+                    Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
                         ),
                       ),
-                    ],
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'イベントを追加',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close, color: Colors.white),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // カレンダー表示
+                              Card(
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: TableCalendar(
+                                    firstDay: DateTime.now().subtract(Duration(days: 365)),
+                                    lastDay: DateTime.now().add(Duration(days: 365)),
+                                    focusedDay: focusedDay,
+                                    selectedDayPredicate: (day) {
+                                      return isSameDay(selectedDate, day);
+                                    },
+                                    onDaySelected: (selectedDay, focusedDayChanged) {
+                                      setState(() {
+                                        selectedDate = selectedDay;
+                                        focusedDay = focusedDayChanged;
+                                      });
+                                    },
+                                    calendarFormat: CalendarFormat.month,
+                                    eventLoader: _getEventsForDay,
+                                    calendarStyle: CalendarStyle(
+                                      todayDecoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      selectedDecoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      markerDecoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.secondary,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    headerStyle: HeaderStyle(
+                                      formatButtonVisible: false,
+                                      titleCentered: true,
+                                    ),
+                                    locale: 'ja_JP',
+                                  ),
+                                ),
+                              ),
+                              
+                              SizedBox(height: 16),
+                              
+                              // 選択した日付の表示
+                              Row(
+                                children: [
+                                  Icon(Icons.calendar_today, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    '選択日: ${DateFormat('yyyy年MM月dd日').format(selectedDate)}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              
+                              SizedBox(height: 24),
+                              
+                              // イベント名入力
+                              TextField(
+                                controller: titleController,
+                                decoration: InputDecoration(
+                                  labelText: 'イベント名',
+                                  hintText: '例：水やり、肥料など',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  prefixIcon: Icon(Icons.event_note),
+                                ),
+                              ),
+                              
+                              SizedBox(height: 16),
+                              
+                              // メモ入力
+                              TextField(
+                                controller: descriptionController,
+                                decoration: InputDecoration(
+                                  labelText: 'メモ（任意）',
+                                  hintText: '例：多めに水をあげる',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  prefixIcon: Icon(Icons.note),
+                                ),
+                                maxLines: 3,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    // ボタン
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(12),
+                          bottomRight: Radius.circular(12),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Text('キャンセル'),
+                          ),
+                          SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            icon: Icon(Icons.add),
+                            label: Text('追加'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                            onPressed: () {
+                              Navigator.of(context).pop({
+                                'title': titleController.text.isEmpty
+                                    ? '${widget.plant['name']}のイベント'
+                                    : titleController.text,
+                                'description': descriptionController.text,
+                                'eventDate': selectedDate,
+                                'eventType': '予定',
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text('キャンセル'),
+            );
+          },
+        );
+      },
+    ).then((value) async {
+      if (value != null && value is Map<String, dynamic>) {
+        await _addCalendarEvent(value);
+      }
+    });
+  }
+
+  void _showEditEventDialog(Map<String, dynamic> event) {
+    final titleController = TextEditingController(text: event['title']);
+    final descriptionController = TextEditingController(text: event['description']);
+    
+    // 既存のイベント日付を初期選択
+    DateTime selectedDate = event['eventDate'];
+    
+    // カレンダーの表示月
+    DateTime focusedDay = selectedDate;
+    
+    // 既存のイベントをカレンダーマーカー用に変換
+    Map<DateTime, List<Map<String, dynamic>>> events = {};
+    
+    for (var e in _plantEvents) {
+      final eventDate = e['eventDate'] as DateTime;
+      final dateKey = DateTime(eventDate.year, eventDate.month, eventDate.day);
+      
+      if (events[dateKey] == null) {
+        events[dateKey] = [];
+      }
+      
+      events[dateKey]!.add({
+        'id': e['id'],
+        'title': e['title'],
+      });
+    }
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            // カレンダー用のイベントマーカー取得関数
+            List<Map<String, dynamic>> _getEventsForDay(DateTime day) {
+              final dateKey = DateTime(day.year, day.month, day.day);
+              return events[dateKey] ?? [];
+            }
+            
+            return Dialog(
+              insetPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Container(
+                width: double.maxFinite,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
                 ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop({
-                      'date': selectedDate,
-                      'note': noteController.text,
-                    });
-                  },
-                  child: Text('保存'),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ヘッダー
+                    Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'イベントを編集',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close, color: Colors.white),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // カレンダー表示
+                              Card(
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: TableCalendar(
+                                    firstDay: DateTime.now().subtract(Duration(days: 365)),
+                                    lastDay: DateTime.now().add(Duration(days: 365)),
+                                    focusedDay: focusedDay,
+                                    selectedDayPredicate: (day) {
+                                      return isSameDay(selectedDate, day);
+                                    },
+                                    onDaySelected: (selectedDay, focusedDayChanged) {
+                                      setState(() {
+                                        selectedDate = selectedDay;
+                                        focusedDay = focusedDayChanged;
+                                      });
+                                    },
+                                    calendarFormat: CalendarFormat.month,
+                                    eventLoader: _getEventsForDay,
+                                    calendarStyle: CalendarStyle(
+                                      todayDecoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      selectedDecoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      markerDecoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.secondary,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    headerStyle: HeaderStyle(
+                                      formatButtonVisible: false,
+                                      titleCentered: true,
+                                    ),
+                                    locale: 'ja_JP',
+                                  ),
+                                ),
+                              ),
+                              
+                              SizedBox(height: 16),
+                              
+                              // 選択した日付の表示
+                              Row(
+                                children: [
+                                  Icon(Icons.calendar_today, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    '選択日: ${DateFormat('yyyy年MM月dd日').format(selectedDate)}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              
+                              SizedBox(height: 24),
+                              
+                              // イベント名入力
+                              TextField(
+                                controller: titleController,
+                                decoration: InputDecoration(
+                                  labelText: 'イベント名',
+                                  hintText: '例：水やり、肥料など',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  prefixIcon: Icon(Icons.event_note),
+                                ),
+                              ),
+                              
+                              SizedBox(height: 16),
+                              
+                              // メモ入力
+                              TextField(
+                                controller: descriptionController,
+                                decoration: InputDecoration(
+                                  labelText: 'メモ（任意）',
+                                  hintText: '例：多めに水をあげる',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  prefixIcon: Icon(Icons.note),
+                                ),
+                                maxLines: 3,
+                              ),
+                              
+                              SizedBox(height: 20),
+                              
+                              // 削除ボタン
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: Text('イベントの削除'),
+                                      content: Text('このイベントを削除してもよろしいですか？'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(context).pop(),
+                                          child: Text('キャンセル'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.of(context).pop();
+                                            Navigator.of(context).pop('delete');
+                                          },
+                                          child: Text('削除する', style: TextStyle(color: Colors.red)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                icon: Icon(Icons.delete_outline, color: Colors.red),
+                                label: Text('イベントを削除', style: TextStyle(color: Colors.red)),
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(color: Colors.red),
+                                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    // ボタン
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(12),
+                          bottomRight: Radius.circular(12),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Text('キャンセル'),
+                          ),
+                          SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            icon: Icon(Icons.save),
+                            label: Text('更新'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                            onPressed: () {
+                              Navigator.of(context).pop({
+                                'id': event['id'],
+                                'title': titleController.text.isEmpty
+                                    ? '${widget.plant['name']}のイベント'
+                                    : titleController.text,
+                                'description': descriptionController.text,
+                                'eventDate': selectedDate,
+                                'eventType': event['eventType'] ?? '予定',
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             );
           },
         );
       },
     ).then((value) async {
       if (value == 'delete') {
-        await _deleteWateringReminder();
-      } else if (value != null && value is Map) {
-        setState(() {
-          _nextWateringDate = value['date'];
-          _wateringNote = value['note'];
-          _hasWateringReminder = true;
-        });
-        await _saveWateringReminder();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('リマインダーを設定しました')),
-        );
+        await _deleteCalendarEvent(event['id']);
+      } else if (value != null && value is Map<String, dynamic>) {
+        await _updateCalendarEvent(value);
       }
     });
   }
 
-  Widget _buildDatePicker(
-      DateTime selectedDate, Function(DateTime) onDateChanged) {
-    return InkWell(
-      onTap: () async {
-        final DateTime? picked = await showDatePicker(
-          context: context,
-          initialDate: selectedDate,
-          firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(Duration(days: 365)),
-        );
-        if (picked != null) {
-          onDateChanged(picked);
-        }
-      },
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(DateFormat('yyyy年MM月dd日').format(selectedDate)),
-            Icon(Icons.calendar_today),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimePicker(
-      TimeOfDay selectedTime, Function(TimeOfDay) onTimeChanged) {
-    return InkWell(
-      onTap: () async {
-        final TimeOfDay? picked = await showTimePicker(
-          context: context,
-          initialTime: selectedTime,
-        );
-        if (picked != null) {
-          onTimeChanged(picked);
-        }
-      },
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-                '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}'),
-            Icon(Icons.access_time),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _saveWateringReminder() async {
-    final String plantId = widget.plant['id'] ?? '';
-    if (plantId.isEmpty) return;
-
+  Future<void> _addCalendarEvent(Map<String, dynamic> eventData) async {
     try {
+      final String plantId = widget.plant['id'] ?? widget.plant['plantId'] ?? '';
+      if (plantId.isEmpty) return;
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         _showLoginPrompt();
         return;
       }
 
-      Map<String, dynamic>? reminderData;
+      // 保存するデータの構造を_loadCalendarEventsと合わせる
+      final Map<String, dynamic> saveData = {
+        'plantId': plantId,
+        'plantName': widget.plant['name'] ?? '名称不明',
+        'title': eventData['title'],
+        'description': eventData['description'] ?? '',
+        'eventDate': eventData['eventDate'],
+        'eventType': eventData['eventType'] ?? '予定',
+        'createdAt': FieldValue.serverTimestamp(),
+      };
 
-      if (_nextWateringDate != null) {
-        reminderData = {
-          'nextWateringDate': _nextWateringDate!.toIso8601String(),
-          'wateringNote': _wateringNote,
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-      }
+      // Firestoreに保存
+      final eventDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('plantEvents')
+          .add(saveData);
 
-      await FirebaseFirestore.instance
-          .collection('plants')
-          .doc(plantId)
-          .update({'wateringReminder': reminderData});
+      // ローカルステートに追加
+      setState(() {
+        _plantEvents.add({
+          'id': eventDoc.id,
+          'title': eventData['title'],
+          'description': eventData['description'] ?? '',
+          'eventDate': eventData['eventDate'],
+          'eventType': eventData['eventType'] ?? '予定',
+        });
+        _plantEvents.sort((a, b) => (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
+      });
 
-      print('リマインダー情報を更新しました');
-    } catch (e) {
-      print('リマインダー保存エラー: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('リマインダーの保存に失敗しました')),
+        SnackBar(content: Text('イベントを追加しました')),
+      );
+      
+      // 変更を確実に反映するために再読み込み
+      await _loadCalendarEvents();
+    } catch (e) {
+      print('イベント追加エラー: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('イベントの追加に失敗しました: $e')),
       );
     }
   }
 
-  Future<void> _deleteWateringReminder() async {
-    final String plantId = widget.plant['id'] ?? '';
-    if (plantId.isEmpty) return;
-
+  Future<void> _deleteCalendarEvent(String eventId) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
       await FirebaseFirestore.instance
-          .collection('plants')
-          .doc(plantId)
-          .update({'wateringReminder': FieldValue.delete()});
+          .collection('users')
+          .doc(user.uid)
+          .collection('plantEvents')
+          .doc(eventId)
+          .delete();
 
       setState(() {
-        _nextWateringDate = null;
-        _wateringNote = '';
-        _hasWateringReminder = false;
+        _plantEvents.removeWhere((event) => event['id'] == eventId);
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('リマインダーを削除しました')),
+        SnackBar(content: Text('イベントを削除しました')),
       );
     } catch (e) {
-      print('リマインダー削除エラー: $e');
+      print('イベント削除エラー: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('リマインダーの削除に失敗しました')),
+        SnackBar(content: Text('イベントの削除に失敗しました')),
+      );
+    }
+  }
+
+  Future<void> _updateCalendarEvent(Map<String, dynamic> eventData) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('plantEvents')
+          .doc(eventData['id'])
+          .update({
+        'title': eventData['title'],
+        'description': eventData['description'],
+        'eventDate': eventData['eventDate'],
+        'eventType': eventData['eventType'],
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      setState(() {
+        final index = _plantEvents.indexWhere((e) => e['id'] == eventData['id']);
+        if (index != -1) {
+          _plantEvents[index] = eventData;
+        }
+        _plantEvents.sort((a, b) => (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('イベントを更新しました')),
+      );
+    } catch (e) {
+      print('イベント更新エラー: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('イベントの更新に失敗しました')),
       );
     }
   }
@@ -886,13 +1453,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     }
 
     try {
-      // Firestoreから削除
       await FirebaseFirestore.instance
           .collection('plants')
           .doc(plantId)
           .delete();
 
-      // 関連するお気に入りも削除
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final favorites = await FirebaseFirestore.instance
@@ -911,7 +1476,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         SnackBar(content: Text('${widget.plant['name']}を削除しました')),
       );
 
-      // 前の画面に戻る
       _handlePlantDelete();
     } catch (e) {
       print("削除エラー: $e");
@@ -952,7 +1516,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
               child: imageUrl != null
                   ? FadeInImage.assetNetwork(
                       placeholder:
-                          'assets/images/plant_loading.png', // プレースホルダー画像（追加必要）
+                          'assets/images/plant_loading.png',
                       image: imageUrl,
                       fit: BoxFit.cover,
                       fadeInDuration: Duration(milliseconds: 300),
@@ -975,11 +1539,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                         );
                       },
                       placeholderErrorBuilder: (context, error, stackTrace) {
-                        // プレースホルダー画像が読み込めない場合
                         return _buildSkeletonLoader();
                       },
-                      imageScale: 1.0, // 解像度スケール
-                      // Removed unsupported cacheWidth and cacheHeight parameters
+                      imageScale: 1.0,
                     )
                   : Center(
                       child: Column(
@@ -1028,7 +1590,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     return Shimmer.fromColors(
       baseColor: Colors.grey[300]!,
       highlightColor: Colors.grey[100]!,
-      period: Duration(milliseconds: 1500), // アニメーション速度
+      period: Duration(milliseconds: 1500),
       child: Container(
         width: double.infinity,
         height: double.infinity,
@@ -1175,12 +1737,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           ),
           actions: [
             IconButton(
-              icon: Icon(_hasWateringReminder
-                  ? Icons.notifications_active
-                  : Icons.notifications_none),
-              color: _hasWateringReminder ? Colors.amber : null,
-              onPressed: _showWateringReminderDialog,
-              tooltip: 'リマインダー',
+              icon: Icon(Icons.event_note),
+              onPressed: _showAddEventDialog,
+              tooltip: 'イベント追加',
             ),
             IconButton(
               icon: Icon(isEditing ? Icons.check : Icons.edit),
@@ -1250,7 +1809,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
             ),
           ),
           SizedBox(height: 10),
-          if (_hasWateringReminder && !isEditing) _buildWateringStatusCard(),
+          if (_plantEvents.isNotEmpty) _buildEventsSection(),
           if (widget.plant['date'] != null &&
               widget.plant['date'].toString().isNotEmpty) ...[
             Row(
@@ -1269,17 +1828,16 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
               field, fieldDisplayNames[field] ?? field.capitalize())),
           ...customFields
               .map((field) => _buildDetailItem(field, field.capitalize())),
-          if (!isEditing && !_hasWateringReminder)
+          if (!isEditing)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16.0),
               child: OutlinedButton.icon(
-                onPressed: _showWateringReminderDialog,
-                icon: Icon(Icons.notifications),
-                label: Text('リマインダーを設定'),
+                onPressed: _showAddEventDialog,
+                icon: Icon(Icons.add),
+                label: Text('カレンダーイベントを追加'),
                 style: OutlinedButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  side:
-                      BorderSide(color: Theme.of(context).colorScheme.primary),
+                  side: BorderSide(color: Theme.of(context).colorScheme.primary),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -1295,8 +1853,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                 label: Text('新しい項目を追加'),
                 style: OutlinedButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  side:
-                      BorderSide(color: Theme.of(context).colorScheme.primary),
+                  side: BorderSide(color: Theme.of(context).colorScheme.primary),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -1308,100 +1865,227 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     );
   }
 
-  Widget _buildWateringStatusCard() {
-    if (_nextWateringDate == null) return SizedBox.shrink();
+  Widget _buildEventsSection() {
+    final today = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
 
-    final now = DateTime.now();
-    final difference = _nextWateringDate!.difference(now).inDays;
-
-    Color statusColor;
-    String statusText;
-    IconData statusIcon;
-
-    if (difference < 0) {
-      statusColor = Colors.red;
-      statusText = '緊急';
-      statusIcon = Icons.warning_amber_rounded;
-    } else if (difference == 0) {
-      statusColor = Colors.orange;
-      statusText = '今日が予定日です';
-      statusIcon = Icons.notifications_active;
-    } else {
-      statusColor = Colors.green;
-      statusText = '予定日はまだ先です';
-      statusIcon = Icons.check_circle;
-    }
+    final pastEvents = _plantEvents
+        .where((e) => (e['eventDate'] as DateTime).isBefore(today))
+        .toList();
+    final upcomingEvents = _plantEvents
+        .where((e) => !(e['eventDate'] as DateTime).isBefore(today))
+        .toList();
 
     return Container(
-      margin: EdgeInsets.only(bottom: 24),
-      decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.5)),
+      margin: EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'スケジュール',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          SizedBox(height: 12),
+          if (upcomingEvents.isNotEmpty) ...[
+            Text(
+              '予定されているイベント',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Colors.green[700],
+              ),
+            ),
+            SizedBox(height: 8),
+            ...upcomingEvents.map((event) => _buildEventCard(event)),
+            SizedBox(height: 16),
+          ],
+          if (pastEvents.isNotEmpty) ...[
+            Text(
+              '過去のイベント',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[700],
+              ),
+            ),
+            SizedBox(height: 8),
+            ...pastEvents.take(3).map((event) => _buildEventCard(event)),
+            if (pastEvents.length > 3)
+              TextButton(
+                onPressed: _showAllPastEvents,
+                child: Text('すべての過去イベントを表示'),
+              ),
+          ],
+          if (_plantEvents.isEmpty)
+            Container(
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Center(
+                child: Text(
+                  'まだイベントがありません。「カレンダーイベントを追加」ボタンから予定を設定できます。',
+                  style: TextStyle(color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _showWateringReminderDialog,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
+    );
+  }
+
+  void _showAllPastEvents() {
+    final today = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+
+    final pastEvents = _plantEvents
+        .where((e) => (e['eventDate'] as DateTime).isBefore(today))
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          child: Container(
+            padding: EdgeInsets.all(16),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(statusIcon, color: statusColor),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        statusText,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: statusColor,
-                        ),
-                      ),
-                    ),
-                    Icon(Icons.edit, size: 18, color: Colors.grey),
-                  ],
-                ),
-                SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.calendar_today,
-                        size: 14, color: Colors.grey[700]),
-                    SizedBox(width: 8),
                     Text(
-                      '次回の予定日: ${DateFormat('yyyy年MM月dd日 HH:mm').format(_nextWateringDate!)}',
+                      '過去のイベント',
                       style: TextStyle(
-                        color: Colors.grey[800],
-                        fontSize: 14,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
-                if (_wateringNote.isNotEmpty) ...[
-                  SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(Icons.note, size: 14, color: Colors.grey[700]),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _wateringNote,
-                          style: TextStyle(
-                            color: Colors.grey[800],
-                            fontSize: 14,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    ],
+                Divider(),
+                Container(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.6,
                   ),
-                ]
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: pastEvents.map((event) => _buildEventCard(event)).toList(),
+                  ),
+                ),
               ],
             ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEventCard(Map<String, dynamic> event) {
+    final today = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    final eventDate = DateTime(
+      (event['eventDate'] as DateTime).year,
+      (event['eventDate'] as DateTime).month,
+      (event['eventDate'] as DateTime).day,
+    );
+    final bool isToday = eventDate.isAtSameMomentAs(today);
+    final bool isPast = eventDate.isBefore(today);
+    final Color eventColor = Colors.teal;
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: isToday ? eventColor : Colors.grey[300]!,
+          width: isToday ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        onTap: () => _showEditEventDialog(event),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: eventColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.event_note, color: eventColor, size: 24),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      event['title'],
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: isPast ? Colors.grey[600] : Colors.black87,
+                        decoration: isPast ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today,
+                            size: 14, color: Colors.grey[600]),
+                        SizedBox(width: 4),
+                        Text(
+                          DateFormat('yyyy年MM月dd日')
+                              .format(event['eventDate']),
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (event['description'] != null && event['description'].isNotEmpty) ...[
+                      SizedBox(height: 8),
+                      Text(
+                        event['description'],
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[800],
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey),
+            ],
           ),
         ),
       ),
@@ -1437,7 +2121,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                   ),
                 ),
               ),
-              if (isEditing && customFields.contains(fieldKey))
+              if (isEditing && (customFields.contains(fieldKey) || fieldKey == 'height' || fieldKey == 'width'))
                 IconButton(
                   icon: Icon(Icons.delete, color: Colors.red[300], size: 20),
                   onPressed: () => _deleteField(fieldKey),
@@ -1489,7 +2173,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   }
 }
 
-// String拡張メソッド - 最初の文字を大文字にする
 extension StringExtension on String {
   String capitalize() {
     if (this.isEmpty) return this;
