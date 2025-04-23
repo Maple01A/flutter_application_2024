@@ -8,7 +8,6 @@ import 'package:flutter_application_2024/login.dart';
 import 'package:flutter_application_2024/setting.dart';
 import 'package:flutter_application_2024/info.dart';
 import 'package:flutter_application_2024/detail.dart';
-import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_application_2024/signup.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -202,8 +201,7 @@ class _MyAppState extends State<MyApp> {
               onThemeColorChanged: _changeThemeColor,
               onCrossAxisCountChanged: _changeCrossAxisCount,
             ),
-        // お気に入りと設定のルートを追加
-        '/favorite': (context) => FavoriteScreen(),
+        '/explore': (context) => ExploreScreen(), // エクスプローラー画面を追加
         '/setting': (context) => Setting(
               onThemeColorChanged: _changeThemeColor,
               onCrossAxisCountChanged: _changeCrossAxisCount,
@@ -211,7 +209,7 @@ class _MyAppState extends State<MyApp> {
               initialCrossAxisCount: _crossAxisCount,
             ),
         '/info': (context) => Info(),
-        '/logout': (context) => LoginScreen(), // スラッシュを追加
+        '/logout': (context) => LoginScreen(),
       },
     );
   }
@@ -254,7 +252,7 @@ class _MainNavigatorState extends State<MainNavigator> {
       PlantListScreen(
         crossAxisCount: widget.crossAxisCount,
       ),
-      FavoriteScreen(),
+      ExploreScreen(),
       Setting(
         onThemeColorChanged: widget.onThemeColorChanged,
         onCrossAxisCountChanged: widget.onCrossAxisCountChanged,
@@ -285,8 +283,8 @@ class _MainNavigatorState extends State<MainNavigator> {
             label: 'ホーム',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.favorite),
-            label: 'お気に入り',
+            icon: Icon(Icons.explore),
+            label: '探索',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings),
@@ -595,10 +593,10 @@ class _PlantListScreenState extends State<PlantListScreen> {
       // ホームの場合は現在のデータを保持
       return;
     } else if (index == 1) {
-      // お気に入り画面に遷移（データを保持）
+      // エクスプローラー画面に遷移（データを保持）
       await Navigator.pushNamed(
         context,
-        '/favorite',
+        '/explore',
       );
     } else if (index == 2) {
       // 設定画面に遷移（データを保持）
@@ -612,9 +610,9 @@ class _PlantListScreenState extends State<PlantListScreen> {
   Future<void> _handleDrawerNavigation(String title) async {
     if (title == 'ホーム') {
       Navigator.pop(context);
-    } else if (title == 'お気に入り') {
+    } else if (title == '探索') {
       Navigator.pop(context);
-      await Navigator.pushNamed(context, '/favorite');
+      await Navigator.pushNamed(context, '/explore');
     } else if (title == '設定') {
       Navigator.pop(context);
       await Navigator.pushNamed(context, '/setting');
@@ -739,10 +737,10 @@ class _PlantListScreenState extends State<PlantListScreen> {
             ),
             ListTile(
               leading: Icon(Icons.favorite),
-              title: Text('お気に入り'),
+              title: Text('探索'),
               onTap: () {
                 Navigator.pop(context); // ドロワーを閉じる
-                Navigator.pushNamed(context, '/favorite'); // 正しいルートで遷移
+                Navigator.pushNamed(context, '/explore'); // 正しいルートで遷移
               },
             ),
             ListTile(
