@@ -291,7 +291,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('エラーが発生しました: ${e.toString()}'),
-              duration: const Duration(seconds: 5),
+              duration: const Duration(seconds: 2),
               behavior: SnackBarBehavior.floating,
             ),
           );

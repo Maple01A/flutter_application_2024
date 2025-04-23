@@ -251,8 +251,8 @@ class _LoginScreenState extends State<LoginScreen> {
         // 画面遷移前にわかりやすいメッセージ
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('ログイン成功！${MyApp.userName}さん、こんにちは！'),
-            duration: const Duration(seconds: 3),
+            content: Text('ログイン成功！${MyApp.userName}さん、ようこそ！'),
+            duration: const Duration(seconds: 2),
           ),
         );
 
@@ -267,26 +267,13 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.pop(context);
 
       log("FirebaseAuthException: ${e.code} - ${e.message}");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_getErrorMessage(e)),
-          duration: const Duration(seconds: 1),
-        ),
-      );
     } catch (e) {
       // ダイアログを閉じる
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
       }
 
-      log("メールアドレスでのログインエラー: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('予期せぬエラーが発生しました: $e'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    }
+      log("メールアドレスでのログインエラー: $e");    }
   }
 
   // エラーメッセージを日本語化するヘルパーメソッド
@@ -358,7 +345,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('ゲストユーザーとしてログインしました'),
-          duration: Duration(seconds: 3),
+          duration: Duration(seconds: 2),
         ),
       );
 
@@ -369,14 +356,6 @@ class _LoginScreenState extends State<LoginScreen> {
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
       }
-
-      print("匿名ログインエラー: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('ゲストログインに失敗しました: $e'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
     }
   }
 

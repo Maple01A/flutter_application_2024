@@ -201,7 +201,7 @@ class _Setting extends State<Setting> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('テーマカラーを変更しました'),
-        duration: Duration(seconds: 1),
+        duration: Duration(seconds: 2),
       ),
     );
   }

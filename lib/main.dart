@@ -202,8 +202,16 @@ class _MyAppState extends State<MyApp> {
               onThemeColorChanged: _changeThemeColor,
               onCrossAxisCountChanged: _changeCrossAxisCount,
             ),
+        // お気に入りと設定のルートを追加
+        '/favorite': (context) => FavoriteScreen(),
+        '/setting': (context) => Setting(
+              onThemeColorChanged: _changeThemeColor,
+              onCrossAxisCountChanged: _changeCrossAxisCount,
+              initialColor: _themeColor,
+              initialCrossAxisCount: _crossAxisCount,
+            ),
         '/info': (context) => Info(),
-        'logout': (context) => LoginScreen(),
+        '/logout': (context) => LoginScreen(), // スラッシュを追加
       },
     );
   }
@@ -229,6 +237,7 @@ class MainNavigator extends StatefulWidget {
   _MainNavigatorState createState() => _MainNavigatorState();
 }
 
+// _MainNavigatorState クラスを修正
 class _MainNavigatorState extends State<MainNavigator> {
   late int _selectedIndex;
   late List<Widget> _pages;
@@ -255,6 +264,7 @@ class _MainNavigatorState extends State<MainNavigator> {
     ];
   }
 
+  // ナビゲーションアイテムをタップした際の処理を正しく設定
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -731,16 +741,16 @@ class _PlantListScreenState extends State<PlantListScreen> {
               leading: Icon(Icons.favorite),
               title: Text('お気に入り'),
               onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/favorite');
+                Navigator.pop(context); // ドロワーを閉じる
+                Navigator.pushNamed(context, '/favorite'); // 正しいルートで遷移
               },
             ),
             ListTile(
               leading: Icon(Icons.settings),
               title: Text('設定'),
               onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/setting');
+                Navigator.pop(context); // ドロワーを閉じる
+                Navigator.pushNamed(context, '/setting'); // 正しいルートで遷移
               },
             ),
 

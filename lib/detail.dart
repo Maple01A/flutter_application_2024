@@ -502,7 +502,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
             Text('変更を保存中...'),
           ],
         ),
-        duration: Duration(seconds: 1),
+        duration: Duration(seconds: 2),
       ),
     );
 
@@ -645,7 +645,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
             Text('新しい項目を追加中...'),
           ],
         ),
-        duration: Duration(seconds: 1),
+        duration: Duration(seconds: 2),
       ),
     );
 
@@ -742,7 +742,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
             Text('項目を削除中...'),
           ],
         ),
-        duration: Duration(seconds: 1),
+        duration: Duration(seconds: 2),
       ),
     );
 
@@ -837,7 +837,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
               Text('保存中...'),
             ],
           ),
-          duration: Duration(seconds: 1),
+          duration: Duration(seconds: 2),
         ),
       );
 
@@ -924,7 +924,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
               Text('更新中...'),
             ],
           ),
-          duration: Duration(seconds: 1),
+          duration: Duration(seconds: 2),
         ),
       );
 
