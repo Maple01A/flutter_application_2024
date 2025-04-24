@@ -191,7 +191,7 @@ class _MyAppState extends State<MyApp> {
         ),
         useMaterial3: true,
       ),
-      initialRoute: '/login', // ログイン画面を最初に表示
+      initialRoute: '/login',
       routes: {
         '/login': (context) => LoginScreen(),
         '/signup': (context) => SignUpScreen(),
@@ -327,8 +327,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
   String _sortBy = 'name';
   bool _isInitialized = false;
   bool _isLoading = false;
-  bool _forceReload = false; // 強制再読み込みフラグ
-
+  bool _forceReload = false;
   @override
   void initState() {
     super.initState();
@@ -399,7 +398,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
         int.parse(parts[2]),
       );
     } catch (e) {
-      return DateTime(1900); // エラー時はデフォルト値
+      return DateTime(1900); 
     }
   }
 
@@ -536,7 +535,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
         } catch (e) {
           print('画像URL取得エラー: $e');
           plantData['images'] = 'https://via.placeholder.com/150?text=No+Image';
-          // エラー時もキャッシュに保存（再リクエスト防止）
           _imageUrlCache[docId] =
               'https://via.placeholder.com/150?text=No+Image';
         }
@@ -558,7 +556,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
       final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
 
       // plantIdsが10個以上の場合、バッチ処理が必要
-      // Firestoreの'whereIn'は一度に最大10個までの値しかサポートしていないため
       List<List<String>> batches = [];
       for (int i = 0; i < plantIds.length; i += 10) {
         final end = (i + 10 < plantIds.length) ? i + 10 : plantIds.length;
