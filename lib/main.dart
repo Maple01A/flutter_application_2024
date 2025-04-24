@@ -238,7 +238,6 @@ class MainNavigator extends StatefulWidget {
   _MainNavigatorState createState() => _MainNavigatorState();
 }
 
-// _MainNavigatorState クラスを修正
 class _MainNavigatorState extends State<MainNavigator> {
   late int _selectedIndex;
   late List<Widget> _pages;
@@ -319,7 +318,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
   // 当日のイベントキャッシュ (plantId -> イベントあり)
   final Map<String, bool> _todayEventCache = {};
 
-  // 既存の変数はそのまま
   static const double _cardBorderRadius = 15.0;
   List<Map<String, dynamic>> plants = [];
   List<Map<String, dynamic>> filteredPlants = [];
@@ -335,13 +333,11 @@ class _PlantListScreenState extends State<PlantListScreen> {
       _filterPlants(searchController.text);
     });
 
-    // ウィジェットがビルド完了後にデータロードを開始
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
     });
   }
 
-  // データ初期化を別メソッドに分離して可読性を向上
   Future<void> _initializeData() async {
     if (!_isInitialized) {
       await loadPlantData();
