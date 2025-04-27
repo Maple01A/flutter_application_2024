@@ -184,7 +184,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '草花の図鑑',
+      title: '植物管理アプリ',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: _themeColor,
@@ -202,7 +202,6 @@ class _MyAppState extends State<MyApp> {
               onThemeColorChanged: _changeThemeColor,
               onCrossAxisCountChanged: _changeCrossAxisCount,
             ),
-        // お気に入りと設定のルートを追加
         '/favorite': (context) => FavoriteScreen(),
         '/setting': (context) => Setting(
               onThemeColorChanged: _changeThemeColor,
@@ -412,7 +411,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
   // loadPlantData 関数を最適化します
   Future<void> loadPlantData() async {
-    if (_isLoading) return; // 既にロード中なら処理しない
+    if (_isLoading) return; 
 
     setState(() {
       _isLoading = true;
@@ -619,7 +618,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('草花の図鑑'),
+        title: const Text('植物管理アプリ'),
         actions: [
           // ソートメニューを追加
           PopupMenuButton<String>(

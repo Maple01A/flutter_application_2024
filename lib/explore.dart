@@ -32,11 +32,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
     super.initState();
     _loadPublicPlants();
     _scrollController.addListener(_scrollListener);
-    
-    // 日本語カテゴリー用の設定
-    _categories.addAll([
-      '観葉植物', '多肉植物', 'サボテン', '花木', '野菜', 'ハーブ', '山野草'
-    ]);
   }
   
   @override
