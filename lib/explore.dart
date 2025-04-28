@@ -15,8 +15,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
   // データ管理
   List<Map<String, dynamic>> _publicPlants = [];
   bool _isLoading = true;
-  String _filterCategory = 'すべて';
-  final List<String> _categories = ['すべて', '人気', '新着', 'お気に入り'];
   
   // ページネーション
   bool _hasMoreData = true;
@@ -65,70 +63,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           .where('isPublic', isEqualTo: true)
           .orderBy('lastUpdated', descending: true)
           .limit(_pageSize);
-      
-      // カテゴリーのフィルタリング
-      if (_filterCategory != 'すべて' && 
-          _filterCategory != '人気' && 
-          _filterCategory != '新着' && 
-          _filterCategory != 'お気に入り') {
-        query = query.where('category', isEqualTo: _filterCategory);
-      } else if (_filterCategory == '人気') {
-        query = FirebaseFirestore.instance
-            .collection('plants')
-            .where('isPublic', isEqualTo: true)
-            .orderBy('likesCount', descending: true)
-            .limit(_pageSize);
-      } else if (_filterCategory == 'お気に入り') {
-        // 現在のユーザーがお気に入りした植物のIDを取得
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser != null) {
-          final favoriteSnapshot = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(currentUser.uid)
-              .collection('favorites')
-              .get();
-              
-          List<String> favoritePlantIds = favoriteSnapshot.docs
-              .map((doc) => doc.data()['plantId'] as String)
-              .toList();
-              
-          if (favoritePlantIds.isEmpty) {
-            setState(() {
-              _isLoading = false;
-              _publicPlants = [];
-              _hasMoreData = false;
-            });
-            return;
-          }
-          
-          // Firestoreは「in」クエリで最大10個までしかサポートしないため分割処理が必要
-          List<Map<String, dynamic>> allFavoritePlants = [];
-          for (int i = 0; i < favoritePlantIds.length; i += 10) {
-            final end = (i + 10 < favoritePlantIds.length) ? i + 10 : favoritePlantIds.length;
-            final batchIds = favoritePlantIds.sublist(i, end);
-            
-            final batchSnapshot = await FirebaseFirestore.instance
-                .collection('plants')
-                .where(FieldPath.documentId, whereIn: batchIds)
-                .where('isPublic', isEqualTo: true)
-                .get();
-                
-            allFavoritePlants.addAll(batchSnapshot.docs.map((doc) {
-              Map<String, dynamic> data = doc.data();
-              data['id'] = doc.id;
-              return data;
-            }).toList());
-          }
-          
-          setState(() {
-            _isLoading = false;
-            _publicPlants = allFavoritePlants;
-            _hasMoreData = false;  // お気に入りは一度に全て取得するので追加読み込みなし
-          });
-          return;
-        }
-      }
-      
+    
       QuerySnapshot plantSnapshot = await query.get();
       if (plantSnapshot.docs.isEmpty) {
         setState(() {
@@ -177,20 +112,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
           .startAfterDocument(_lastDocument!)
           .limit(_pageSize);
       
-      // カテゴリーのフィルタリング
-      if (_filterCategory != 'すべて' && 
-          _filterCategory != '人気' && 
-          _filterCategory != '新着' && 
-          _filterCategory != 'お気に入り') {
-        query = query.where('category', isEqualTo: _filterCategory);
-      } else if (_filterCategory == '人気') {
-        query = FirebaseFirestore.instance
-            .collection('plants')
-            .where('isPublic', isEqualTo: true)
-            .orderBy('likesCount', descending: true)
-            .startAfterDocument(_lastDocument!)
-            .limit(_pageSize);
-      }
       
       QuerySnapshot plantSnapshot = await query.get();
       
@@ -222,14 +143,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
     }
   }
   
-  void _filterByCategory(String category) {
-    if (_filterCategory != category) {
-      setState(() {
-        _filterCategory = category;
-      });
-      _loadPublicPlants(refresh: true);
-    }
-  }
   
   @override
   Widget build(BuildContext context) {
@@ -246,28 +159,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
             padding: EdgeInsets.symmetric(vertical: 8),
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: _categories.length,
               itemBuilder: (context, index) {
-                final category = _categories[index];
-                final isSelected = _filterCategory == category;
                 
                 return Padding(
                   padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: ChoiceChip(
-                    label: Text(category),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      if (selected) {
-                        _filterByCategory(category);
-                      }
-                    },
-                    backgroundColor: Colors.grey[200],
-                    selectedColor: Theme.of(context).colorScheme.primary.withOpacity(0.7),
-                    labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black87,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
                 );
               },
             ),
