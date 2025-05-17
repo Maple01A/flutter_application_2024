@@ -435,11 +435,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
     } catch (e) {
       print("データ読み込み中にエラーが発生しました: $e");
       // エラーをUI上で表示
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('データの読み込みに失敗しました。再試行してください。')),
-        );
-      }
     } finally {
       if (mounted) {
         setState(() {
