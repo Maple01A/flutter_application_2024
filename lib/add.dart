@@ -385,7 +385,6 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                             controller: _nameController,
                             decoration: InputDecoration(
                               labelText: '名前',
-                              prefixIcon: Icon(Icons.local_florist),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide.none,
@@ -410,7 +409,6 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                             controller: _descriptionController,
                             decoration: InputDecoration(
                               labelText: '説明',
-                              prefixIcon: Icon(Icons.description),
                               alignLabelWithHint: true,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -436,7 +434,6 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                             controller: _dateController,
                             decoration: InputDecoration(
                               labelText: '日付',
-                              prefixIcon: Icon(Icons.calendar_today),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide.none,

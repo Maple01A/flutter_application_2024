@@ -411,7 +411,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _emailController,
                   decoration: const InputDecoration(
-                    labelText: "メールアドレス",
+                    labelText: "DEMOの場合：guest@flutter.com",
                     prefixIcon: Icon(Icons.email),
                   ),
                   keyboardType: TextInputType.emailAddress,
@@ -425,7 +425,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _passwordController,
                   decoration: const InputDecoration(
-                    labelText: "パスワード",
+                    labelText: "DEMOの場合：password",
                     prefixIcon: Icon(Icons.lock),
                   ),
                   obscureText: true,

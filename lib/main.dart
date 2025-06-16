@@ -499,36 +499,37 @@ class _PlantListScreenState extends State<PlantListScreen> {
   // 画像処理だけを行う関数に分離して可読性向上
   Future<void> _processPlantImage(
       Map<String, dynamic> plantData, String docId) async {
-    if (plantData['images'] != null) {
-      final imagePath = plantData['images'].toString();
+    if (plantData['images'] == null) return;
+    
+    final imagePath = plantData['images'].toString();
 
-      // 1. キャッシュ内に画像URLがあるか確認
-      if (_imageUrlCache.containsKey(docId) && !_forceReload) {
-        plantData['images'] = _imageUrlCache[docId];
-        print('キャッシュから画像URLを使用: ${plantData['name']}');
-      }
-      // 2. 既にHTTPで始まるURLかチェック
-      else if (imagePath.startsWith('http')) {
-        // キャッシュに保存
-        _imageUrlCache[docId] = imagePath;
-      }
-      // 3. Firebaseパスの場合のみ、URLに変換
-      else {
-        try {
-          final downloadUrl =
-              await FirebaseStorage.instance.ref(imagePath).getDownloadURL();
+    // 空文字列チェック
+    if (imagePath.isEmpty) {
+      plantData['images'] = 'https://via.placeholder.com/150?text=No+Image';
+      return;
+    }
 
-          plantData['images'] = downloadUrl;
-          // キャッシュに保存
-          _imageUrlCache[docId] = downloadUrl;
-          print('新しい画像URLを取得: ${plantData['name']}');
-        } catch (e) {
-          print('画像URL取得エラー: $e');
-          plantData['images'] = 'https://via.placeholder.com/150?text=No+Image';
-          _imageUrlCache[docId] =
-              'https://via.placeholder.com/150?text=No+Image';
-        }
-      }
+    // キャッシュ確認（最も高速）
+    if (_imageUrlCache.containsKey(docId) && !_forceReload) {
+      plantData['images'] = _imageUrlCache[docId];
+      return;
+    }
+
+    // HTTPで始まるURLならそのまま
+    if (imagePath.startsWith('http')) {
+      _imageUrlCache[docId] = imagePath;
+      return;
+    }
+
+    // Firebaseパスの場合のみ、URLに変換
+    try {
+      final downloadUrl = await FirebaseStorage.instance.ref(imagePath).getDownloadURL();
+      plantData['images'] = downloadUrl;
+      _imageUrlCache[docId] = downloadUrl;
+    } catch (e) {
+      print('画像URL取得エラー: $e');
+      plantData['images'] = 'https://via.placeholder.com/150?text=No+Image';
+      _imageUrlCache[docId] = 'https://via.placeholder.com/150?text=No+Image';
     }
   }
 

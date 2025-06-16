@@ -44,3 +44,8 @@ app.*.map.json
 
 # Firebase configuration
 lib/firebase_options.dart
+
+# Android keystore file
+android/keystore.properties
+android/release.jks
+android/*.jks

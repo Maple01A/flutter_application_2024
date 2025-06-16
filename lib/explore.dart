@@ -90,10 +90,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
       setState(() {
         _isLoading = false;
       });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('データの読み込みに失敗しました')),
-      );
     }
   }
   
@@ -350,20 +346,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
               fontWeight: FontWeight.bold,
               color: Colors.grey[700],
             ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'カテゴリーを変更するか、後でもう一度お試しください',
-            style: TextStyle(
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () => _loadPublicPlants(refresh: true),
-            icon: Icon(Icons.refresh),
-            label: Text('再読み込み'),
           ),
         ],
       ),
