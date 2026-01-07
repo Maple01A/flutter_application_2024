@@ -58,14 +58,20 @@ class _ExploreScreenState extends State<ExploreScreen> {
     }
     
     try {
+      print('🔍 公開植物を検索中...');
+      
+      // orderByを削除してシンプルなクエリに変更（インデックス不要）
       Query query = FirebaseFirestore.instance
           .collection('plants')
           .where('isPublic', isEqualTo: true)
-          .orderBy('lastUpdated', descending: true)
           .limit(_pageSize);
     
       QuerySnapshot plantSnapshot = await query.get();
+      
+      print('📊 取得した公開植物の数: ${plantSnapshot.docs.length}');
+      
       if (plantSnapshot.docs.isEmpty) {
+        print('⚠️ 公開植物が見つかりません');
         setState(() {
           _isLoading = false;
           _hasMoreData = false;
@@ -78,18 +84,45 @@ class _ExploreScreenState extends State<ExploreScreen> {
       List<Map<String, dynamic>> loadedPlants = plantSnapshot.docs.map((doc) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
         data['id'] = doc.id;
+        print('✅ 植物: ${data['name']}, isPublic: ${data['isPublic']}, ユーザー: ${data['userName']}');
         return data;
       }).toList();
+      
+      // ローカルでソート（lastUpdatedがあれば使用）
+      loadedPlants.sort((a, b) {
+        final aTime = a['lastUpdated'];
+        final bTime = b['lastUpdated'];
+        
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        
+        final aTimestamp = (aTime as Timestamp).toDate();
+        final bTimestamp = (bTime as Timestamp).toDate();
+        
+        return bTimestamp.compareTo(aTimestamp);
+      });
       
       setState(() {
         _publicPlants = loadedPlants;
         _isLoading = false;
       });
+      
+      print('✨ 公開植物の表示完了');
     } catch (e) {
-      print('公開植物の読み込みエラー: $e');
+      print('❌ 公開植物の読み込みエラー: $e');
       setState(() {
         _isLoading = false;
       });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('データの読み込みに失敗しました: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
   
@@ -101,10 +134,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
     });
     
     try {
+      // orderByを削除してシンプルに
       Query query = FirebaseFirestore.instance
           .collection('plants')
           .where('isPublic', isEqualTo: true)
-          .orderBy('lastUpdated', descending: true)
           .startAfterDocument(_lastDocument!)
           .limit(_pageSize);
       
@@ -144,7 +177,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('エクスプローラー'),
+        title: Text('探索'),
         elevation: 0,
       ),
       body: Column(
@@ -198,7 +231,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
   Widget _buildPlantCard(Map<String, dynamic> plant) {
     final hasImage = plant['images'] != null && plant['images'].toString().isNotEmpty;
     final userName = plant['userName'] ?? '匿名ユーザー';
-    final likesCount = plant['likesCount'] ?? 0;
     
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -249,24 +281,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  SizedBox(height: 4),
-                  if (plant['description'] != null) ...[
-                    Text(
-                      plant['description'],
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[700],
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    SizedBox(height: 8),
-                  ],
                   
-                  // ユーザー情報とお気に入り数
+                  // ユーザー情報
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      Icon(Icons.person, size: 14, color: Colors.grey[600]),
+                      SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           userName,
@@ -277,19 +297,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      Row(
-                        children: [
-                          Icon(Icons.favorite, size: 14, color: Colors.red[400]),
-                          SizedBox(width: 4),
-                          Text(
-                            '$likesCount',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),

@@ -6,7 +6,6 @@ import 'package:flutter_application_2024/login.dart';
 import 'package:flutter_application_2024/setting.dart';
 import 'package:flutter_application_2024/info.dart';
 import 'package:flutter_application_2024/detail.dart';
-import 'package:flutter_application_2024/favorite.dart';
 import 'package:flutter_application_2024/signup.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -43,7 +42,7 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  Color _themeColor = Colors.lightBlueAccent;
+  Color _themeColor = Colors.green;
   int _crossAxisCount = 2;
   User? _user; 
   int _currentPageIndex = 0; // 現在のページインデックス
@@ -193,7 +192,6 @@ class _MyAppState extends State<MyApp> {
               onThemeColorChanged: _changeThemeColor,
               onCrossAxisCountChanged: _changeCrossAxisCount,
             ),
-        '/favorite': (context) => FavoriteScreen(),
         '/setting': (context) => Setting(
               onThemeColorChanged: _changeThemeColor,
               onCrossAxisCountChanged: _changeCrossAxisCount,
@@ -237,6 +235,16 @@ class _MainNavigatorState extends State<MainNavigator> {
     super.initState();
     _selectedIndex = widget.initialIndex;
     _initPages();
+  }
+
+  @override
+  void didUpdateWidget(MainNavigator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // crossAxisCountまたはthemeColorが変更された場合、ページを再初期化
+    if (oldWidget.crossAxisCount != widget.crossAxisCount ||
+        oldWidget.themeColor != widget.themeColor) {
+      _initPages();
+    }
   }
 
   void _initPages() {
@@ -559,19 +567,13 @@ class _PlantListScreenState extends State<PlantListScreen> {
     }
   }
 
-  final menuList = ['ホーム', 'お気に入り', '設定'];
+  final menuList = ['ホーム', '設定'];
 
   void _handleNavigationTap(int index) async {
     if (index == 0) {
       // ホームの場合は現在のデータを保持
       return;
     } else if (index == 1) {
-      // お気に入り画面に遷移（データを保持）
-      await Navigator.pushNamed(
-        context,
-        '/favorite',
-      );
-    } else if (index == 2) {
       // 設定画面に遷移（データを保持）
       await Navigator.pushNamed(
         context,
@@ -583,9 +585,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
   Future<void> _handleDrawerNavigation(String title) async {
     if (title == 'ホーム') {
       Navigator.pop(context);
-    } else if (title == 'お気に入り') {
-      Navigator.pop(context);
-      await Navigator.pushNamed(context, '/favorite');
     } else if (title == '設定') {
       Navigator.pop(context);
       await Navigator.pushNamed(context, '/setting');
@@ -707,14 +706,6 @@ class _PlantListScreenState extends State<PlantListScreen> {
               leading: Icon(Icons.home),
               title: Text('ホーム'),
               onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              leading: Icon(Icons.favorite),
-              title: Text('お気に入り'),
-              onTap: () {
-                Navigator.pop(context); // ドロワーを閉じる
-                Navigator.pushNamed(context, '/favorite'); // 正しいルートで遷移
-              },
             ),
             ListTile(
               leading: Icon(Icons.settings),
@@ -978,7 +969,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
               Expanded(
                 flex: 1,
                 child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -989,11 +980,11 @@ class _PlantListScreenState extends State<PlantListScreen> {
                           // 今日のイベントがある場合のアイコンを表示（テキストの左）
                           if (hasTodayEvent)
                             Padding(
-                              padding: const EdgeInsets.only(right: 4.0),
+                              padding: const EdgeInsets.only(right: 2.0),
                               child: Icon(
                                 Icons.event_available,
                                 color: Colors.green,
-                                size: 28,
+                                size: 18,
                               ),
                             ),
                           Flexible(
@@ -1001,7 +992,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                               plant['name']?.toString() ?? '名称不明',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                                fontSize: 13,
                               ),
                               textAlign: TextAlign.center,
                               maxLines: 1,
@@ -1014,7 +1005,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                         Text(
                           plant['date'].toString(),
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 10,
                             color: Colors.grey[600],
                           ),
                           textAlign: TextAlign.center,

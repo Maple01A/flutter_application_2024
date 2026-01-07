@@ -20,10 +20,6 @@ class PlantDetailScreen extends StatefulWidget {
 
   // データ構造の差異を吸収する静的メソッド
   static void _normalizePlantData(Map<String, dynamic> plant) {
-    // お気に入り情報を保持
-    final bool explicitFavorite = plant['isFavorite'] == true;
-    final String? favoriteId = plant['favoriteId']?.toString();
-
     // 1. IDフィールドの統一
     if (plant.containsKey('plantId') && !plant.containsKey('id')) {
       plant['id'] = plant['plantId'];
@@ -44,12 +40,6 @@ class PlantDetailScreen extends StatefulWidget {
         (!plant.containsKey('images') || plant['images'] == null)) {
       plant['images'] = plant['imageUrl'];
     }
-
-    // 4. お気に入り状態を保持
-    plant['isFavorite'] = explicitFavorite;
-    if (favoriteId != null) {
-      plant['favoriteId'] = favoriteId;
-    }
   }
 
   @override
@@ -62,11 +52,10 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   final _storageService = StorageService();
   
   // UI状態管理
-  bool isFavorite = false;
+  bool isPublic = false;
   bool isEditing = false;
   bool _isLoading = false;
-  bool _isCheckingFavorite = false;
-  bool _favoriteChanged = false;
+  bool _isTogglingPublic = false;
 
   // フィールド管理
   Map<String, TextEditingController> fieldControllers = {};
@@ -77,9 +66,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
   // カレンダー連携用の変数
   List<Map<String, dynamic>> _plantEvents = [];
-
-  // お気に入り関連
-  String? _favoriteId;
 
   // 表示名マッピング
   final Map<String, String> fieldDisplayNames = {'description': '説明', 'height': '高さ', 'width': '株張り'};
@@ -92,13 +78,8 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     
     _initializeData();
 
-    // お気に入りの初期状態を設定
-    if (widget.plant['isFavorite'] == true) {
-      isFavorite = true;
-      _favoriteId = widget.plant['favoriteId']?.toString();
-    } else {
-      _checkIfFavorite();
-    }
+    // 公開状態の初期化
+    isPublic = widget.plant['isPublic'] == true;
   }
 
   @override
@@ -108,12 +89,6 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     _newFieldNameController.dispose();
     _newFieldValueController.dispose();
 
-    // 前の画面に変更があったことを通知
-    if (_favoriteChanged) {
-      Navigator.of(context).pop(true);
-    } else {
-      Navigator.of(context).pop(false);
-    }
     super.dispose();
   }
 
@@ -237,88 +212,21 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
     });
   }
 
-  // ===== お気に入り機能 =====
+  // ===== 公開機能 =====
 
-  Future<void> _checkIfFavorite() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      setState(() => isFavorite = false);
-      return;
-    }
-
-    setState(() => _isCheckingFavorite = true);
-
-    try {
-      if (widget.plant['favoriteId'] != null) {
-        final favoriteId = widget.plant['favoriteId'].toString();
-        final docSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('favorites')
-            .doc(favoriteId)
-            .get();
-
-        if (docSnapshot.exists) {
-          setState(() {
-            isFavorite = true;
-            _favoriteId = favoriteId;
-          });
-          return;
-        }
-      }
-
-      final String plantId =
-          widget.plant['plantId'] ?? widget.plant['id'] ?? '';
-      if (plantId.isEmpty) {
-        setState(() {
-          isFavorite = false;
-          _isCheckingFavorite = false;
-        });
-        return;
-      }
-
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('favorites')
-          .where('plantId', isEqualTo: plantId)
-          .get();
-
-      if (querySnapshot.docs.isNotEmpty) {
-        setState(() {
-          isFavorite = true;
-          _favoriteId = querySnapshot.docs.first.id;
-          widget.plant['favoriteId'] = _favoriteId;
-        });
-      } else {
-        setState(() {
-          isFavorite = false;
-          _favoriteId = null;
-        });
-      }
-    } catch (e) {
-      print('お気に入り状態の確認エラー: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isCheckingFavorite = false);
-      }
-    }
-  }
-
-  Future<void> _toggleFavorite() async {
-    final user = FirebaseAuth.instance.currentUser;
+  Future<void> _togglePublic() async {
+    final user = _authService.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('お気に入りの登録にはログインが必要です')),
+        SnackBar(content: Text('公開設定にはログインが必要です')),
       );
       return;
     }
 
-    setState(() => _isCheckingFavorite = true);
+    setState(() => _isTogglingPublic = true);
 
     try {
-      final String plantId =
-          widget.plant['plantId'] ?? widget.plant['id'] ?? '';
+      final String plantId = widget.plant['plantId'] ?? widget.plant['id'] ?? '';
       if (plantId.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('植物IDが見つかりません')),
@@ -326,30 +234,29 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         return;
       }
 
-      if (isFavorite) {
-        await _removeFromFavorites(user);
-      } else {
-        await _addToFavorites(user, plantId);
-      }
-    } catch (e) {
-      print('お気に入り状態の変更エラー: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('エラーが発生しました')),
-      );
-    } finally {
-      setState(() => _isCheckingFavorite = false);
-    }
-  }
+      final newPublicState = !isPublic;
+      
+      // ユーザー名を取得
+      String? userName = await _firebaseService.getUserName(user.uid);
+      userName ??= user.displayName ?? user.email?.split('@')[0] ?? '匿名ユーザー';
 
-  Future<void> _removeFromFavorites(User user) async {
-    if (_favoriteId != null) {
-      await _firebaseService.removeFavorite(user.uid, _favoriteId!);
+      print('🔄 植物ID: $plantId を ${newPublicState ? "公開" : "非公開"}に設定中...');
+      
+      await FirebaseFirestore.instance
+          .collection('plants')
+          .doc(plantId)
+          .update({
+        'isPublic': newPublicState,
+        'userName': userName,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+
+      print('✅ 公開状態を更新しました: isPublic=$newPublicState, userName=$userName');
 
       setState(() {
-        isFavorite = false;
-        _favoriteId = null;
-        widget.plant['isFavorite'] = false;
-        widget.plant.remove('favoriteId');
+        isPublic = newPublicState;
+        widget.plant['isPublic'] = newPublicState;
+        widget.plant['userName'] = userName;
       });
 
       if (mounted) {
@@ -357,58 +264,29 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           SnackBar(
             content: Row(
               children: [
-                Icon(Icons.favorite_border, color: Colors.white),
+                Icon(newPublicState ? Icons.public : Icons.public_off, color: Colors.white),
                 SizedBox(width: 8),
-                Text('お気に入りから削除しました'),
+                Expanded(
+                  child: Text(
+                    newPublicState 
+                      ? '公開しました！探索画面で表示されます。' 
+                      : '非公開にしました',
+                  ),
+                ),
               ],
             ),
+            duration: Duration(seconds: 3),
           ),
         );
       }
-      _favoriteChanged = true;
+    } catch (e) {
+      print('公開状態の変更エラー: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('エラーが発生しました')),
+      );
+    } finally {
+      setState(() => _isTogglingPublic = false);
     }
-  }
-
-  Future<void> _addToFavorites(User user, String plantId) async {
-    final favoriteData = {
-      'plantId': plantId,
-      'name': widget.plant['name'] ?? '名称不明',
-      'addedAt': FieldValue.serverTimestamp(),
-    };
-
-    if (widget.plant['images'] != null) {
-      favoriteData['images'] = widget.plant['images'];
-    }
-
-    if (widget.plant['description'] != null) {
-      favoriteData['description'] = widget.plant['description'];
-    }
-
-    if (widget.plant['date'] != null) {
-      favoriteData['date'] = widget.plant['date'];
-    }
-
-    final docRef = await _firebaseService.addToFavorites(user.uid, favoriteData);
-
-    setState(() {
-      isFavorite = true;
-      _favoriteId = docRef.id;
-      widget.plant['isFavorite'] = true;
-      widget.plant['favoriteId'] = docRef.id;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.favorite, color: Colors.white),
-            SizedBox(width: 8),
-            Text('お気に入りに追加しました'),
-          ],
-        ),
-      ),
-    );
-    _favoriteChanged = true;
   }
 
   // ===== 編集機能 =====
@@ -1822,17 +1700,17 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           ),
           actions: [
             IconButton(
-              icon: Icon(Icons.event_note),
-              onPressed: _showAddEventDialog,
-              tooltip: 'イベント追加',
-            ),
-            IconButton(
               icon: Icon(isEditing ? Icons.check : Icons.edit),
               onPressed: _toggleEditMode,
               tooltip: isEditing ? '保存' : '編集',
             ),
             IconButton(
-              icon: _isCheckingFavorite
+              icon: Icon(Icons.event_note),
+              onPressed: _showAddEventDialog,
+              tooltip: 'イベント追加',
+            ),
+            IconButton(
+              icon: _isTogglingPublic
                   ? SizedBox(
                       width: 24,
                       height: 24,
@@ -1842,11 +1720,11 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
                       ),
                     )
                   : Icon(
-                      isFavorite ? Icons.favorite : Icons.favorite_border,
-                      color: isFavorite ? Colors.red : null,
+                      isPublic ? Icons.public : Icons.public_off,
+                      color: isPublic ? Colors.white : null,
                     ),
-              onPressed: _isCheckingFavorite ? null : _toggleFavorite,
-              tooltip: isFavorite ? 'お気に入りから削除' : 'お気に入りに追加',
+              onPressed: _isTogglingPublic ? null : _togglePublic,
+              tooltip: isPublic ? '非公開にする' : '公開する',
             ),
           ],
         ),

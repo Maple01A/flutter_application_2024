@@ -9,7 +9,8 @@ class Plant {
   final String userId;
   final DateTime createdAt;
   final DateTime? updatedAt;
-  final bool isFavorite;
+  final bool isPublic;
+  final String? userName;
   final Map<String, dynamic>? metadata;
 
   Plant({
@@ -20,7 +21,8 @@ class Plant {
     required this.userId,
     required this.createdAt,
     this.updatedAt,
-    this.isFavorite = false,
+    this.isPublic = false,
+    this.userName,
     this.metadata,
   });
 
@@ -35,7 +37,8 @@ class Plant {
       userId: data['userId'] ?? '',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
-      isFavorite: data['isFavorite'] ?? false,
+      isPublic: data['isPublic'] ?? false,
+      userName: data['userName'],
       metadata: data['metadata'],
     );
   }
@@ -50,7 +53,8 @@ class Plant {
       userId: map['userId'] ?? '',
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
-      isFavorite: map['isFavorite'] ?? false,
+      isPublic: map['isPublic'] ?? false,
+      userName: map['userName'],
       metadata: map['metadata'],
     );
   }
@@ -64,7 +68,8 @@ class Plant {
       'userId': userId,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
-      'isFavorite': isFavorite,
+      'isPublic': isPublic,
+      'userName': userName,
       'metadata': metadata,
     };
   }
@@ -78,7 +83,8 @@ class Plant {
     String? userId,
     DateTime? createdAt,
     DateTime? updatedAt,
-    bool? isFavorite,
+    bool? isPublic,
+    String? userName,
     Map<String, dynamic>? metadata,
   }) {
     return Plant(
@@ -89,7 +95,8 @@ class Plant {
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      isFavorite: isFavorite ?? this.isFavorite,
+      isPublic: isPublic ?? this.isPublic,
+      userName: userName ?? this.userName,
       metadata: metadata ?? this.metadata,
     );
   }
