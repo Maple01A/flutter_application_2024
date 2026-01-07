@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'detail.dart';
+import 'services/auth_service.dart';
+import 'services/firebase_service.dart';
+import 'services/storage_service.dart';
+import 'utils/error_handler.dart';
 
 class FavoriteScreen extends StatefulWidget {
   @override
@@ -10,6 +13,10 @@ class FavoriteScreen extends StatefulWidget {
 }
 
 class _FavoriteScreenState extends State<FavoriteScreen> {
+  final _authService = AuthService();
+  final _firebaseService = FirebaseService();
+  final _storageService = StorageService();
+  
   List<Map<String, dynamic>> favoritePlants = [];
   bool _isLoading = false;
   bool _isAuthenticated = false;
@@ -31,7 +38,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
 
   // 認証状態を確認してからお気に入りを読み込む
   Future<void> _checkAuthAndLoadFavorites() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _authService.currentUser;
     setState(() {
       _currentUser = user;
       _isAuthenticated = user != null;
@@ -53,26 +60,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Firebaseからデータを取得
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser!.uid)
-          .collection('favorites')
-          .get();
-
-      final List<Map<String, dynamic>> loadedPlants = [];
-
-      for (var doc in snapshot.docs) {
-        final data = Map<String, dynamic>.from(doc.data());
-        data['id'] = doc.id;
-
-        // 植物の詳細情報を取得（参照されている場合）
-        if (data['plantId'] != null) {
-          await _addPlantDetails(data);
-        }
-
-        loadedPlants.add(data);
-      }
+      final loadedPlants = await _firebaseService.getFavoritePlantsWithDetails(_currentUser!.uid);
 
       if (mounted) {
         setState(() => favoritePlants = loadedPlants);
@@ -80,6 +68,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
     } catch (e) {
       print('お気に入りの読み込みエラー: $e');
       if (mounted) {
+        ErrorHandler.showError(context, e);
         setState(() => favoritePlants = []);
       }
     } finally {
@@ -129,14 +118,9 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
       String favoriteId = plant['id'] ?? '';
 
       if (favoriteId.isNotEmpty) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_currentUser!.uid)
-            .collection('favorites')
-            .doc(favoriteId)
-            .delete();
-      } else {
-        await _deleteByPlantId(plant['plantId']);
+        await _firebaseService.removeFavorite(_currentUser!.uid, favoriteId);
+      } else if (plant['plantId'] != null) {
+        await _firebaseService.removeFavoriteByPlantId(_currentUser!.uid, plant['plantId']);
       }
 
       setState(() {
@@ -144,32 +128,20 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
             item['id'] == plant['id'] || item['plantId'] == plant['plantId']);
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('お気に入りから削除しました')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('お気に入りから削除しました')),
+        );
+      }
     } catch (e) {
       print('お気に入り削除エラー: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('削除中にエラーが発生しました')),
-      );
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
     } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // 植物IDで検索して削除
-  Future<void> _deleteByPlantId(String? plantId) async {
-    if (plantId == null) return;
-
-    final snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser!.uid)
-        .collection('favorites')
-        .where('plantId', isEqualTo: plantId)
-        .get();
-
-    for (var doc in snapshot.docs) {
-      await doc.reference.delete();
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -203,13 +175,9 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
     if (plantData['images'] == null || plantData['images'].toString().isEmpty) {
       if (plantData['plantId'] != null) {
         try {
-          final plantDoc = await FirebaseFirestore.instance
-              .collection('plants')
-              .doc(plantData['plantId'].toString())
-              .get();
-
-          if (plantDoc.exists && plantDoc.data()?['images'] != null) {
-            plantData['images'] = plantDoc.data()?['images'];
+          final plant = await _firebaseService.getPlant(plantData['plantId'].toString());
+          if (plant != null && plant.imageUrl != null) {
+            plantData['images'] = plant.imageUrl;
           }
         } catch (e) {
           print('画像URL補完エラー: $e');
@@ -453,8 +421,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
   Future<String?> _getDownloadUrlFromPath(
       String path, Map<String, dynamic> plant) async {
     try {
-      final ref = FirebaseStorage.instance.ref().child(path);
-      final url = await ref.getDownloadURL();
+      final url = await _storageService.getDownloadUrl(path);
 
       // キャッシュのため、オブジェクトを更新
       plant['images'] = url;

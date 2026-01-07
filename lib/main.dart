@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_application_2024/add.dart';
 import 'package:flutter_application_2024/login.dart';
@@ -15,6 +13,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'explore.dart';
 import 'theme/app_theme.dart';
+import 'services/auth_service.dart';
+import 'services/firebase_service.dart';
+import 'services/storage_service.dart';
+import 'utils/error_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +47,8 @@ class _MyAppState extends State<MyApp> {
   int _crossAxisCount = 2;
   User? _user; 
   int _currentPageIndex = 0; // 現在のページインデックス
+  final _authService = AuthService();
+  final _firebaseService = FirebaseService();
 
   @override
   void initState() {
@@ -73,18 +77,15 @@ class _MyAppState extends State<MyApp> {
 
   // 現在のユーザー情報を確認
   Future<void> _checkCurrentUser() async {
-    _user = FirebaseAuth.instance.currentUser;
+    _user = _authService.currentUser;
     if (_user != null) {
       try {
         // Firestoreからユーザー名を取得
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_user!.uid)
-            .get();
+        final userName = await _firebaseService.getUserName(_user!.uid);
 
-        if (userDoc.exists && userDoc.data()?['name'] != null) {
+        if (userName != null) {
           setState(() {
-            MyApp.userName = userDoc.data()?['name'];
+            MyApp.userName = userName;
           });
           print('Firestoreから取得したユーザー名: ${MyApp.userName}');
         } else if (_user!.displayName != null &&
@@ -138,10 +139,7 @@ class _MyAppState extends State<MyApp> {
   // ユーザー名をFirestoreに保存する補助メソッド
   Future<void> _saveUserNameToFirestore(String uid, String name) async {
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
-        'name': name,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await _firebaseService.saveUserName(uid, name);
       print('ユーザー名をFirestoreに保存しました: $name');
     } catch (e) {
       print('ユーザー名の保存に失敗しました: $e');
@@ -152,7 +150,7 @@ class _MyAppState extends State<MyApp> {
   Future<void> _logout() async {
     try {
       // Firebaseからログアウト
-      await FirebaseAuth.instance.signOut();
+      await _authService.signOut();
       
       // 保存された認証情報をすべて削除
       final prefs = await SharedPreferences.getInstance();
@@ -173,12 +171,9 @@ class _MyAppState extends State<MyApp> {
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
     } catch (e) {
       print('ログアウトエラー: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('ログアウトに失敗しました。もう一度お試しください。'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
     }
   }
 
@@ -307,6 +302,10 @@ class PlantListScreen extends StatefulWidget {
 
 // プラントリスト画面に画像キャッシュを追加
 class _PlantListScreenState extends State<PlantListScreen> {
+  final _authService = AuthService();
+  final _firebaseService = FirebaseService();
+  final _storageService = StorageService();
+  
   // 画像URLキャッシュを追加（IDをキーとしてURLを保存）
   final Map<String, String> _imageUrlCache = {};
 
@@ -443,7 +442,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
   // Firebaseからデータを読み込む関数を修正
   Future<void> _loadFirebasePlants() async {
     // ユーザーチェック
-    User? currentUser = FirebaseAuth.instance.currentUser;
+    User? currentUser = _authService.currentUser;
     if (currentUser == null) {
       print('認証されていません');
       if (mounted) {
@@ -458,21 +457,15 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
     try {
       // データ取得
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('plants')
-          .where('userId', isEqualTo: currentUser.uid)
-          .get();
+      final plantsList = await _firebaseService.getPlantsAsMap(currentUser.uid);
 
       // 一時データリスト
       List<Map<String, dynamic>> loadedPlants = [];
 
       // 結果処理
-      for (var doc in querySnapshot.docs) {
-        Map<String, dynamic> plantData = doc.data() as Map<String, dynamic>;
-        plantData['id'] = doc.id;
-
+      for (var plantData in plantsList) {
         // 画像URLの処理を最適化
-        await _processPlantImage(plantData, doc.id);
+        await _processPlantImage(plantData, plantData['id']);
 
         // データを追加
         loadedPlants.add(plantData);
@@ -519,7 +512,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
     // Firebaseパスの場合のみ、URLに変換
     try {
-      final downloadUrl = await FirebaseStorage.instance.ref(imagePath).getDownloadURL();
+      final downloadUrl = await _storageService.getDownloadUrl(imagePath);
       plantData['images'] = downloadUrl;
       _imageUrlCache[docId] = downloadUrl;
     } catch (e) {
@@ -534,7 +527,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
     if (plantIds.isEmpty) return;
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _authService.currentUser;
       if (user == null) return;
 
       // 今日の日付範囲
@@ -551,18 +544,11 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
       // 各バッチを処理
       for (var batchIds in batches) {
-        final querySnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('plantEvents')
-            .where('plantId', whereIn: batchIds)
-            .where('eventDate', isGreaterThanOrEqualTo: startOfDay)
-            .where('eventDate', isLessThanOrEqualTo: endOfDay)
-            .get();
-
+        final events = await _firebaseService.getTodayEvents(user.uid, batchIds, startOfDay, endOfDay);
+        
         // 結果をキャッシュに格納
-        for (var doc in querySnapshot.docs) {
-          String plantId = doc.data()['plantId'];
+        for (var event in events) {
+          String plantId = event['plantId'];
           _todayEventCache[plantId] = true;
         }
       }
@@ -707,7 +693,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
                   Text(
                     _isAnonymousUser()
                         ? "ログインしてデータを保存"
-                        : FirebaseAuth.instance.currentUser?.email ?? "",
+                        : _authService.currentUser?.email ?? "",
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
@@ -853,7 +839,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
 
   // 匿名ユーザーかどうかを判定するヘルパーメソッド
   bool _isAnonymousUser() {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _authService.currentUser;
     return user == null || user.isAnonymous;
   }
 
@@ -899,7 +885,7 @@ class _PlantListScreenState extends State<PlantListScreen> {
         );
 
         // Firebase認証からログアウト
-        await FirebaseAuth.instance.signOut();
+        await _authService.signOut();
         
         // SharedPreferencesの認証情報をクリア
         final prefs = await SharedPreferences.getInstance();

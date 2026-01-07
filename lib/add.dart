@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image/image.dart' as img;
-import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
+import 'services/firebase_service.dart';
+import 'services/storage_service.dart';
+import 'services/auth_service.dart';
+import 'utils/validators.dart';
+import 'utils/error_handler.dart';
+import 'components/buttons/primary_button.dart';
+import 'foundation/spacing.dart';
 
 class AddPlantScreen extends StatefulWidget {
   @override
@@ -16,6 +19,10 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _dateController = TextEditingController();
+  final FirebaseService _firebaseService = FirebaseService();
+  final StorageService _storageService = StorageService();
+  final AuthService _authService = AuthService();
+  
   File? _image;
   bool _isUploading = false;
   bool _isLoading = false;
@@ -26,74 +33,6 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     _descriptionController.dispose();
     _dateController.dispose();
     super.dispose();
-  }
-
-  // 画像圧縮処理
-  Future<File> _compressImage(File file) async {
-    try {
-      // ファイルサイズのチェック
-      final fileSize = await file.length();
-      if (fileSize <= 500 * 1024) {
-        // 500KB以下の場合は圧縮不要
-        print('画像サイズが小さいため圧縮をスキップ: ${fileSize ~/ 1024}KB');
-        return file;
-      }
-
-      // 画像ファイルを読み込む
-      final bytes = await file.readAsBytes();
-      final image = img.decodeImage(bytes);
-
-      if (image == null) {
-        print('画像のデコードに失敗しました');
-        return file;
-      }
-
-      // 画像リサイズ
-      img.Image resizedImage = image;
-      final maxDimension = 1024;
-
-      if (image.width > maxDimension || image.height > maxDimension) {
-        // アスペクト比を維持したまま最大サイズに制限
-        final aspectRatio = image.width / image.height;
-        int newWidth, newHeight;
-
-        if (image.width > image.height) {
-          newWidth = maxDimension;
-          newHeight = (maxDimension / aspectRatio).round();
-        } else {
-          newHeight = maxDimension;
-          newWidth = (maxDimension * aspectRatio).round();
-        }
-
-        resizedImage = img.copyResize(
-          image,
-          width: newWidth,
-          height: newHeight,
-        );
-
-        print(
-            '画像リサイズ: ${image.width}x${image.height} → ${newWidth}x${newHeight}');
-      }
-
-      // 品質調整（大きな画像ほど圧縮率を上げる）
-      final quality = fileSize > 2 * 1024 * 1024 ? 75 : 85;
-      final compressedBytes = img.encodeJpg(resizedImage, quality: quality);
-
-      // 圧縮した画像を一時ファイルとして保存
-      final tempDir = await Directory.systemTemp.createTemp();
-      final tempFile = File(
-          '${tempDir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await tempFile.writeAsBytes(compressedBytes);
-
-      final newSize = await tempFile.length();
-      print(
-          '圧縮完了: ${fileSize ~/ 1024}KB → ${newSize ~/ 1024}KB (${(newSize / fileSize * 100).toStringAsFixed(1)}%)');
-
-      return tempFile;
-    } catch (e) {
-      print('画像圧縮エラー: $e');
-      return file; // エラー時は元のファイルを返す
-    }
   }
 
   // 画像選択処理
@@ -111,12 +50,11 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
       setState(() => _isLoading = true);
 
       File imageFile = File(pickedFile.path);
-      File compressedFile = await _compressImage(imageFile);
 
       if (!mounted) return;
 
       setState(() {
-        _image = compressedFile;
+        _image = imageFile;
         _isLoading = false;
       });
     } catch (e) {
@@ -124,23 +62,7 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('画像の選択中にエラーが発生しました'),
-              Text(
-                '対応形式: JPG, PNG, GIF, HEIC',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      ErrorHandler.showError(context, e);
 
       setState(() => _isLoading = false);
     }
@@ -192,114 +114,66 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
     );
   }
 
-  // Firebase Storageへのアップロード
-  Future<String> _uploadImageToStorage(File image) async {
-    try {
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final path = 'images/${timestamp}.jpg';
-
-      final ref = FirebaseStorage.instance.ref().child(path);
-
-      final metadata = SettableMetadata(
-        contentType: 'image/jpeg',
-        customMetadata: {
-          'uploadedAt': DateTime.now().toIso8601String(),
-          'uploadedBy': FirebaseAuth.instance.currentUser?.uid ?? 'anonymous',
-        },
-      );
-
-      await ref.putFile(image, metadata);
-
-      final downloadUrl = await ref.getDownloadURL();
-      print('画像アップロード成功: $downloadUrl');
-
-      return downloadUrl;
-    } catch (e) {
-      print('画像アップロードエラー: $e');
-      throw '画像のアップロードに失敗しました';
-    }
-  }
-
   // プラントデータのアップロード
   Future<void> _uploadPlant() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isUploading = true;
-      });
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-      try {
-        _showLoadingDialog();
+    if (_isUploading) return;
 
-        String? imageUrl;
+    setState(() => _isUploading = true);
 
-        if (_image != null) {
-          try {
-            imageUrl = await _uploadImageToStorage(_image!);
-          } catch (e) {
-            print('画像アップロードエラー: $e');
-            throw Exception('画像のアップロードに失敗しました: $e');
-          }
-        }
+    try {
+      _showLoadingDialog();
 
-        final user = FirebaseAuth.instance.currentUser;
+      final user = _authService.currentUser;
 
-        if (user == null) {
-          throw Exception('ログインしてください');
-        }
+      if (user == null) {
+        throw Exception('ログインしてください');
+      }
 
-        final plantData = {
-          'name': _nameController.text,
-          'description': _descriptionController.text,
-          'date': _dateController.text,
-          'images': imageUrl ?? 'https://placehold.jp/300x300.png',
-          'userId': user.uid,
-          'createdAt': FieldValue.serverTimestamp(),
-        };
+      String? imageUrl;
 
-        final docRef = await FirebaseFirestore.instance
-            .collection('plants')
-            .add(plantData);
+      if (_image != null) {
+        imageUrl = await _storageService.uploadPlantImage(_image!, user.uid);
+      }
 
-        print('植物データが追加されました。ID: ${docRef.id}');
+      await _firebaseService.addPlant(
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim(),
+        imageUrl: imageUrl,
+      );
 
-        // ローディングダイアログを閉じる
-        if (mounted && Navigator.canPop(context)) {
-          Navigator.of(context, rootNavigator: true).pop();
-        }
+      // ローディングダイアログを閉じる
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${_nameController.text}を追加しました'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_nameController.text}を追加しました'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
 
         await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted) {
-          Navigator.of(context).pop(true);
-        }
-      } catch (e) {
-        print('Error in _uploadPlant: $e');
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      print('Error in _uploadPlant: $e');
 
-        if (mounted && Navigator.canPop(context)) {
-          Navigator.of(context, rootNavigator: true).pop();
-        }
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('エラーが発生しました: ${e.toString()}'),
-              duration: const Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      } finally {
-        setState(() {
-          _isUploading = false;
-        });
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploading = false);
       }
     }
   }
@@ -350,8 +224,6 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final themeColor = Theme.of(context).colorScheme.primary;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('新しい植物を追加'),
@@ -383,82 +255,42 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                           // 名前入力フィールド
                           TextFormField(
                             controller: _nameController,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: '名前',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Color(0xFFF5F5F5),
-                              contentPadding: EdgeInsets.symmetric(
-                                  vertical: 16, horizontal: 16),
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return '名前を入力してください';
-                              }
-                              return null;
-                            },
+                            validator: Validators.validatePlantName,
+                            enabled: !_isUploading,
                           ),
-
-                          SizedBox(height: 16),
+                          const SizedBox(height: AppSpacing.md),
                           
                           // 説明入力フィールド
                           TextFormField(
                             controller: _descriptionController,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: '説明',
                               alignLabelWithHint: true,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Color(0xFFF5F5F5),
-                              contentPadding: EdgeInsets.symmetric(
-                                  vertical: 16, horizontal: 16),
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return '説明を入力してください';
-                              }
-                              return null;
-                            },
+                            maxLines: 3,
+                            validator: (value) => Validators.validateRequired(value, '説明'),
+                            enabled: !_isUploading,
                           ),
-
-                          SizedBox(height: 16),
+                          const SizedBox(height: AppSpacing.md),
 
                           // 日付入力フィールド
                           TextFormField(
                             controller: _dateController,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: '日付',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Color(0xFFF5F5F5),
-                              contentPadding: EdgeInsets.symmetric(
-                                  vertical: 16, horizontal: 16),
+                              suffixIcon: Icon(Icons.calendar_today),
                             ),
                             readOnly: true,
-                            onTap: () {
+                            onTap: _isUploading ? null : () {
                               FocusScope.of(context).requestFocus(FocusNode());
                               _selectDate(context);
                             },
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return '日付を選択してください';
-                              }
-                              return null;
-                            },
+                            validator: (value) => Validators.validateRequired(value, '日付'),
                           ),
-
-                          SizedBox(height: 16),
-
-                          
+                          const SizedBox(height: AppSpacing.md),
 
                           // 画像アップロードセクション
                           Container(
@@ -511,38 +343,25 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                                       ],
                                     ),
                                   ),
-                                SizedBox(height: 16),
-                                ElevatedButton.icon(
-                                  onPressed: (_isUploading || _isLoading)
-                                      ? null
-                                      : _showImageSourceDialog,
-                                  label:
-                                      Text(_image == null ? '写真を追加' : '写真を変更'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: themeColor,
-                                    foregroundColor: Colors.white,
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: 12,
-                                      horizontal: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 8),
-                                Text(
-                                  '対応形式: JPG, PNG, GIF, HEIC',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
                               ],
                             ),
                           ),
+                          const SizedBox(height: AppSpacing.md),
+                          PrimaryButton(
+                            onPressed: (_isUploading || _isLoading) ? null : _showImageSourceDialog,
+                            label: _image == null ? '写真を追加' : '写真を変更',
+                            icon: Icons.add_photo_alternate,
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            '対応形式: JPG, PNG, GIF, HEIC',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
 
-                          SizedBox(height: 100), // 下部のボタン用のスペース
+                          const SizedBox(height: 100), // 下部のボタン用のスペース
                         ],
                       ),
                     ),
@@ -554,37 +373,12 @@ class _AddPlantScreenState extends State<AddPlantScreen> {
                   left: 24,
                   right: 24,
                   bottom: 24,
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton.icon(
-                      onPressed: _isUploading ? null : _uploadPlant,
-                      icon: _isUploading
-                          ? SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Icon(Icons.add),
-                      label: Text(
-                        _isUploading ? '保存中...' : '植物を追加',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: themeColor,
-                        foregroundColor: Colors.white,
-                        elevation: 3,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
+                  child: PrimaryButton(
+                    onPressed: _isUploading ? null : _uploadPlant,
+                    label: _isUploading ? '保存中...' : '植物を追加',
+                    icon: _isUploading ? null : Icons.add,
+                    isLoading: _isUploading,
+                    fullWidth: true,
                   ),
                 ),
               ],

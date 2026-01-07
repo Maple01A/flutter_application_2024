@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'services/auth_service.dart';
+import 'services/firebase_service.dart';
+import 'services/storage_service.dart';
+import 'utils/error_handler.dart';
 
 class PlantDetailScreen extends StatefulWidget {
   final Map<String, dynamic> plant;
@@ -54,6 +57,10 @@ class PlantDetailScreen extends StatefulWidget {
 }
 
 class _PlantDetailScreenState extends State<PlantDetailScreen> {
+  final _authService = AuthService();
+  final _firebaseService = FirebaseService();
+  final _storageService = StorageService();
+  
   // UI状態管理
   bool isFavorite = false;
   bool isEditing = false;
@@ -120,7 +127,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           widget.plant['id'] ?? widget.plant['plantId'] ?? '';
       if (plantId.isEmpty) return;
 
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _authService.currentUser;
       if (user != null) {
         // カレンダーイベントの読み込み
         await _loadCalendarEvents();
@@ -130,6 +137,9 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       }
     } catch (e) {
       print('データ初期化エラー: $e');
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
     } finally {
       _initializeControllers();
       if (mounted) setState(() => _isLoading = false);
@@ -144,7 +154,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         return;
       }
 
-      final user = FirebaseAuth.instance.currentUser;
+      final user = _authService.currentUser;
       if (user == null) {
         print('ユーザーがログインしていません');
         return;
@@ -153,71 +163,28 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       print('イベント読み込み開始: plantId=$plantId');
       
       try {
-        // ソート付きクエリを試行（インデックスが作成済みの場合はこれが成功）
-        final eventsSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('plantEvents')
-            .where('plantId', isEqualTo: plantId)
-            .orderBy('eventDate', descending: false)
-            .get();
-            
-        _processEventsSnapshot(eventsSnapshot);
+        final events = await _firebaseService.getPlantEvents(user.uid, plantId, sortByDate: true);
+        _processEvents(events);
       } catch (indexError) {
-        // インデックスエラーが発生した場合、ソートなしでクエリを実行（一時的な対策）
+        // インデックスエラーが発生した場合、ソートなしでクエリを実行
         print('インデックスエラー: $indexError');
         print('ソートなしクエリで再試行中...');
         
-        final eventsSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('plantEvents')
-            .where('plantId', isEqualTo: plantId)
-            .get();
+        final events = await _firebaseService.getPlantEvents(user.uid, plantId, sortByDate: false);
         
-        _processEventsSnapshot(eventsSnapshot);
+        _processEvents(events);
       }
     } catch (e) {
       print('カレンダーイベント読み込みエラー: $e');
+      if (mounted) {
+        ErrorHandler.showError(context, e);
+      }
     }
   }
 
   // イベントデータを処理する分離メソッド
-  void _processEventsSnapshot(QuerySnapshot eventsSnapshot) {
-    print('取得したイベント数: ${eventsSnapshot.docs.length}');
-
-    final events = eventsSnapshot.docs
-        .map((doc) {
-          try {
-            final eventData = doc.data() as Map<String, dynamic>;
-            final eventDate = eventData['eventDate'];
-            
-            // Timestampの変換処理を改善
-            DateTime convertedDate;
-            if (eventDate is Timestamp) {
-              convertedDate = eventDate.toDate();
-            } else if (eventDate is DateTime) {
-              convertedDate = eventDate;
-            } else {
-              convertedDate = DateTime.now();
-              print('不明な日付形式: $eventDate');
-            }
-            
-            return {
-              'id': doc.id,
-              'title': eventData['title'] ?? '',
-              'description': eventData['description'] ?? '',
-              'eventDate': convertedDate,
-              'eventType': eventData['eventType'] ?? '予定',
-            };
-          } catch (e) {
-            print('イベントデータの解析エラー: $e');
-            return null;
-          }
-        })
-        .where((event) => event != null)
-        .cast<Map<String, dynamic>>()
-        .toList();
+  void _processEvents(List<Map<String, dynamic>> events) {
+    print('取得したイベント数: ${events.length}');
 
     // ローカルでソート（インデックスがなくてもUIはソートされる）
     events.sort((a, b) => (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
@@ -376,12 +343,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
   Future<void> _removeFromFavorites(User user) async {
     if (_favoriteId != null) {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('favorites')
-          .doc(_favoriteId)
-          .delete();
+      await _firebaseService.removeFavorite(user.uid, _favoriteId!);
 
       setState(() {
         isFavorite = false;
@@ -390,17 +352,19 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         widget.plant.remove('favoriteId');
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.favorite_border, color: Colors.white),
-              SizedBox(width: 8),
-              Text('お気に入りから削除しました'),
-            ],
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.favorite_border, color: Colors.white),
+                SizedBox(width: 8),
+                Text('お気に入りから削除しました'),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      }
       _favoriteChanged = true;
     }
   }
@@ -424,11 +388,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
       favoriteData['date'] = widget.plant['date'];
     }
 
-    final docRef = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('favorites')
-        .add(favoriteData);
+    final docRef = await _firebaseService.addToFavorites(user.uid, favoriteData);
 
     setState(() {
       isFavorite = true;
