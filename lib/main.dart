@@ -14,6 +14,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'explore.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -185,12 +186,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '植物管理アプリ',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _themeColor,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.lightTheme(primaryColor: _themeColor),
       initialRoute: '/login',
       routes: {
         '/login': (context) => LoginScreen(),
