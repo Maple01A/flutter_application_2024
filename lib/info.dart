@@ -32,7 +32,7 @@ class _Info extends State<Info> {
     // 機密情報をコード内に含めないよう注意
     // 環境変数や安全な認証方法を使用すべき
     final smtpServer =
-        gmail('your-email@gmail.com', 'your-email-password'); // セキュリティリスク！
+        gmail('your-email@gmail.com', 'your-email-password');
 
     try {
       // メール送信処理

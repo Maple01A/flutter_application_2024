@@ -15,6 +15,7 @@ import 'theme/app_theme.dart';
 import 'services/auth_service.dart';
 import 'services/firebase_service.dart';
 import 'services/storage_service.dart';
+import 'services/notification_service.dart'; // 追加
 import 'utils/error_handler.dart';
 
 void main() async {
@@ -26,10 +27,13 @@ void main() async {
 
     // App Checkの初期化
     await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.debug,
+      androidProvider: AndroidProvider.playIntegrity, // リリース用に変更
       appleProvider: AppleProvider.appAttest,
     );
   }
+
+  // 通知サービスの初期化
+  await NotificationService().initialize();
 
   runApp(MyApp());
 }

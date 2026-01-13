@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:developer';
 import 'main.dart';
 import 'services/auth_service.dart';
+import 'services/notification_service.dart';
 import 'utils/error_handler.dart';
 import 'utils/validators.dart';
 import 'components/buttons/primary_button.dart';
@@ -65,7 +66,18 @@ class _LoginScreenState extends State<LoginScreen> {
       final userName = await _authService.getUserName(userCredential.user!.uid);
       MyApp.userName = userName ?? userCredential.user!.displayName ?? userCredential.user!.email?.split('@')[0] ?? "ユーザー";
       
+      // FCMトークンを保存
+      await NotificationService().saveFCMToken(userCredential.user!.uid);
+      
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ログイン成功！${MyApp.userName}さん、ようこそ！'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        await Future.delayed(const Duration(milliseconds: 500));
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {

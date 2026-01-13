@@ -42,6 +42,7 @@ dependencies:
   firebase_auth: ^5.5.1  # Firebaseの認証機能（メール・パスワード認証、匿名認証など）
   firebase_storage: ^12.4.4  # Firebaseのファイルストレージ機能（画像など）
   firebase_app_check: ^0.3.2+4  # Firebaseのセキュリティ向上機能
+  firebase_messaging: ^15.2.4  # Firebaseのプッシュ通知機能
 
   # 認証関連
   google_sign_in: ^6.2.1  # Googleアカウントでのサインイン機能
@@ -64,6 +65,8 @@ dependencies:
   shimmer: ^3.0.0
   table_calendar: ^3.0.9
   flutter_staggered_grid_view: ^0.7.0
+  flutter_local_notifications: ^17.0.0
+  timezone: ^0.9.2
 
 dev_dependencies:
   flutter_test:

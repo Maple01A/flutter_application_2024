@@ -9,6 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'services/auth_service.dart';
 import 'services/firebase_service.dart';
 import 'services/storage_service.dart';
+import 'services/notification_service.dart'; // 追加
 import 'utils/error_handler.dart';
 
 class PlantDetailScreen extends StatefulWidget {
@@ -50,7 +51,8 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   final _authService = AuthService();
   final _firebaseService = FirebaseService();
   final _storageService = StorageService();
-  
+  final _notificationService = NotificationService(); // 追加
+
   // UI状態管理
   bool isPublic = false;
   bool isEditing = false;
@@ -661,40 +663,38 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
         return;
       }
 
-      // 処理中のインジケータを表示
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
               SizedBox(
-                height: 16,
-                width: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
               ),
-              SizedBox(width: 8),
-              Text('保存中...'),
+              SizedBox(width: 12),
+              Text('変更を保存中...'),
             ],
           ),
           duration: Duration(seconds: 2),
         ),
       );
 
-      // 日付の形式に注意
       DateTime eventDate = eventData['eventDate'];
       
-      // Firestoreに保存するデータ形式を厳密に定義
       Map<String, dynamic> saveData = {
         'plantId': plantId,
         'plantName': widget.plant['name'] ?? '名称不明',
         'title': eventData['title'],
         'description': eventData['description'] ?? '',
-        // ここでDateTimeをそのまま保存すると問題が起きる可能性があるため、明示的にTimestampに変換
         'eventDate': Timestamp.fromDate(eventDate),
         'eventType': eventData['eventType'] ?? '予定',
         'createdAt': FieldValue.serverTimestamp(),
       };
 
-      // Firestoreに保存
       final docRef = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -703,29 +703,34 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
 
       print('イベント保存完了: ${docRef.id}');
 
-      // UIに即時反映（ローカルデータをより確実に処理）
+      // 通知をスケジュール
+      await _notificationService.scheduleEventNotification(
+        eventId: docRef.id,
+        plantName: widget.plant['name'] ?? '植物',
+        eventTitle: eventData['title'],
+        eventDate: eventDate,
+      );
+
       setState(() {
         _plantEvents.add({
           'id': docRef.id,
           'title': eventData['title'],
           'description': eventData['description'] ?? '',
-          'eventDate': eventDate, // DateTime型で保持
+          'eventDate': eventDate,
           'eventType': eventData['eventType'] ?? '予定',
         });
         
-        // ソートを確実に行う
         _plantEvents.sort((a, b) => 
             (a['eventDate'] as DateTime).compareTo(b['eventDate'] as DateTime));
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('イベントを追加しました'),
+          content: Text('イベントを追加しました（通知も設定されました）'),
           backgroundColor: Colors.green,
         ),
       );
 
-      // データの整合性を保つため、念のために全データを再読み込み
       await Future.delayed(Duration(milliseconds: 500));
       await _loadCalendarEvents();
       
@@ -1361,12 +1366,15 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
           .doc(eventId)
           .delete();
 
+      // 通知もキャンセル
+      await _notificationService.cancelNotification(eventId.hashCode);
+
       setState(() {
         _plantEvents.removeWhere((event) => event['id'] == eventId);
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('イベントを削除しました')),
+        SnackBar(content: Text('イベントを削除しました（通知もキャンセルされました）')),
       );
     } catch (e) {
       print('イベント削除エラー: $e');
