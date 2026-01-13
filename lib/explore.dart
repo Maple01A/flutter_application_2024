@@ -14,7 +14,12 @@ class ExploreScreen extends StatefulWidget {
 class _ExploreScreenState extends State<ExploreScreen> {
   // データ管理
   List<Map<String, dynamic>> _publicPlants = [];
+  List<Map<String, dynamic>> _filteredPlants = [];
   bool _isLoading = true;
+  
+  // 検索機能
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   
   // ページネーション
   bool _hasMoreData = true;
@@ -30,13 +35,41 @@ class _ExploreScreenState extends State<ExploreScreen> {
     super.initState();
     _loadPublicPlants();
     _scrollController.addListener(_scrollListener);
+    _searchController.addListener(_onSearchChanged);
   }
   
   @override
   void dispose() {
     _scrollController.removeListener(_scrollListener);
     _scrollController.dispose();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
     super.dispose();
+  }
+  
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+      _filterPlants();
+    });
+  }
+  
+  void _filterPlants() {
+    if (_searchQuery.isEmpty) {
+      _filteredPlants = List.from(_publicPlants);
+    } else {
+      _filteredPlants = _publicPlants.where((plant) {
+        final name = (plant['name'] ?? '').toString().toLowerCase();
+        final userName = (plant['userName'] ?? '').toString().toLowerCase();
+        final category = (plant['category'] ?? '').toString().toLowerCase();
+        final location = (plant['location'] ?? '').toString().toLowerCase();
+        
+        return name.contains(_searchQuery) ||
+               userName.contains(_searchQuery) ||
+               category.contains(_searchQuery) ||
+               location.contains(_searchQuery);
+      }).toList();
+    }
   }
   
   void _scrollListener() {
@@ -105,6 +138,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       
       setState(() {
         _publicPlants = loadedPlants;
+        _filteredPlants = List.from(loadedPlants);
         _isLoading = false;
       });
       
@@ -162,6 +196,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       
       setState(() {
         _publicPlants.addAll(morePlants);
+        _filterPlants();
         _isLoadingMore = false;
       });
     } catch (e) {
@@ -179,6 +214,34 @@ class _ExploreScreenState extends State<ExploreScreen> {
       appBar: AppBar(
         title: Text('探索'),
         elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(60),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '植物名、ユーザー名で検索...',
+                filled: true,
+                fillColor: Theme.of(context).cardColor,
+                prefixIcon: Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
+          ),
+        ),
       ),
       body: Column(
         children: [
@@ -201,7 +264,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           Expanded(
             child: _isLoading
                 ? _buildLoadingGrid()
-                : _publicPlants.isEmpty
+                : _filteredPlants.isEmpty
                     ? _buildEmptyState()
                     : RefreshIndicator(
                         onRefresh: () => _loadPublicPlants(refresh: true),
@@ -212,12 +275,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             crossAxisCount: 2,
                             mainAxisSpacing: 8,
                             crossAxisSpacing: 8,
-                            itemCount: _publicPlants.length + (_hasMoreData ? 1 : 0),
+                            itemCount: _filteredPlants.length + (_hasMoreData && _searchQuery.isEmpty ? 1 : 0),
                             itemBuilder: (context, index) {
-                              if (index >= _publicPlants.length) {
+                              if (index >= _filteredPlants.length) {
                                 return _buildLoadingIndicator();
                               }
-                              return _buildPlantCard(_publicPlants[index]);
+                              return _buildPlantCard(_filteredPlants[index]);
                             },
                           ),
                         ),
@@ -341,19 +404,32 @@ class _ExploreScreenState extends State<ExploreScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.search_off,
+            _searchQuery.isEmpty ? Icons.search_off : Icons.search,
             size: 80,
             color: Colors.grey[400],
           ),
           SizedBox(height: 16),
           Text(
-            '公開されている植物がありません',
+            _searchQuery.isEmpty 
+                ? '公開されている植物がありません'
+                : '「$_searchQuery」に一致する植物が見つかりません',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Colors.grey[700],
             ),
+            textAlign: TextAlign.center,
           ),
+          if (_searchQuery.isNotEmpty) ...[
+            SizedBox(height: 8),
+            Text(
+              '別のキーワードで検索してみてください',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
         ],
       ),
     );

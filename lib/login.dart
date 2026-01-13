@@ -72,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('ログイン成功！${MyApp.userName}さん、ようこそ！'),
+            content: Text('${MyApp.userName}さん、ようこそ！'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -113,7 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('ログイン成功！${MyApp.userName}さん、ようこそ！'),
+            content: Text('${MyApp.userName}さん、ようこそ！'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -225,8 +225,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: AppSpacing.xl),
                   PrimaryButton(
                     onPressed: _isSigningIn ? null : _signInWithEmailAndPassword,
-                    label: "メールでログイン",
-                    icon: Icons.email,
+                    label: "ログイン",
                   ),
                   const SizedBox(height: AppSpacing.md),
                   SecondaryButton(
